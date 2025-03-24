@@ -2,6 +2,7 @@
 
 The High-speed and High-ratio Referential Genome Compression Algorithm addresses the challenge of compressing genomic data by using a reference-based approach. Instead of storing entire genome sequences, it records only the differences between the target genome and a closely related reference genome, significantly reducing data size. This method achieves a high compression ratio while ensuring fast processing and minimal computational resource usage, making it well-suited for managing the rapidly growing volume of genomic data in research, healthcare, and bioinformatics applications.
 
+
 # Features
 
 - Efficient Data Reduction – Uses referential compression to store only differences, minimizing storage requirements.
@@ -9,6 +10,7 @@ The High-speed and High-ratio Referential Genome Compression Algorithm addresses
 - Low Memory Usage – Designed to operate efficiently without excessive computational demands.
 - 2-bit Encoding – Compact representation of nucleotide sequences for further space savings.
 - Scalability – Suitable for large-scale genomic datasets.
+
 
 # Parts of the algorithm
 
