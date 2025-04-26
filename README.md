@@ -19,3 +19,13 @@ The High-speed and High-ratio Referential Genome Compression Algorithm addresses
 - Alignment – Efficiently finds matching regions between the target and reference genome.
 - Compression – Stores only the differences while maintaining the ability to reconstruct the original sequence.
 - Decompression – Reconstructs the original genome by applying stored variations to the reference genome.
+
+# Compile
+    make compress_hirgc
+    make decompress_hirgc
+
+# Compress
+    ./compress_hirgc
+
+# Decompress
+    ./decompress_hirgc
