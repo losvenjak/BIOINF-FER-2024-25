@@ -35,6 +35,8 @@ struct SpecialChar {
 
 vector<char> ref_seq;
 vector<char> target_seq;
+vector<char> ref_seq_cleaned;
+vector<char> target_seq_cleaned;
 vector<int> target_seq_encoded;
 vector<int> ref_seq_encoded;
 unordered_map<uint64_t, vector<int>> kmer_hash_table;
@@ -154,27 +156,29 @@ void process_target_sequence() {
   bool in_n_region = false;
   int lowercase_start = 0;
   int n_start = 0;
+  bool valid;
 
   for (int i = 0; i < target_seq.size(); ++i) {
     char c = target_seq[i];
+    valid = true;
 
     if (islower(c)) {
       if (!in_lowercase) {
         lowercase_start = i;
         in_lowercase = true;
       }
-      target_seq[i] = toupper(c);
+      c = toupper(c);
     } else if (in_lowercase) {
       lowercase_ranges.push_back({lowercase_start, i - lowercase_start});
       in_lowercase = false;
     }
 
-    if (toupper(c) == 'N') {
+    if (c == 'N') {
       if (!in_n_region) {
         n_start = i;
         in_n_region = true;
       }
-      target_seq[i] = '_';  // '_' marks chars to be removed
+      valid = false;
     } else if (in_n_region) {
       n_ranges.push_back({n_start, i - n_start});
       in_n_region = false;
@@ -182,7 +186,11 @@ void process_target_sequence() {
 
     if (string("ACGTN").find(toupper(c)) == string::npos) {
       special_chars.push_back({i, c});
-      target_seq[i] = '_';  // Any char that is not ACGTN marked to be removed
+      valid = false;
+    }
+
+    if (valid) {
+      target_seq_cleaned.push_back(c);
     }
 
     if (i == target_seq.size() - 1) {
@@ -196,15 +204,6 @@ void process_target_sequence() {
       }
     }
   }
-
-  // Remove all '_' characters from the sequence
-  vector<char> cleaned_seq;
-  for (char c : target_seq) {
-    if (c != '_') {
-      cleaned_seq.push_back(c);
-    }
-  }
-  target_seq = move(cleaned_seq);
 }
 
 void encode_sequence(vector<char>& sequence, vector<int>& encoded_sequence) {
