@@ -32,6 +32,8 @@ struct SpecialChar {
 
 vector<char> ref_seq;
 vector<char> target_seq;
+vector<int> target_seq_encoded;
+vector<int> ref_seq_encoded;
 unordered_map<string, vector<int>> kmer_hash_table;
 vector<PositionRange> lowercase_ranges;
 vector<PositionRange> n_ranges;
@@ -58,6 +60,8 @@ void initialize_structures() {
   ref_seq.reserve(MAX_SEQ_LENGTH);
   target_seq.reserve(MAX_SEQ_LENGTH);
   mismatch_buffer.reserve(INITIAL_BUFFER_SIZE);
+  target_seq_encoded.reserve(MAX_SEQ_LENGTH);
+  ref_seq_encoded.reserve(MAX_SEQ_LENGTH);
 }
 
 void load_sequence(const string& filename, vector<char>& sequence,
@@ -89,6 +93,12 @@ void load_sequence(const string& filename, vector<char>& sequence,
 
     for (char c : line) {
       if (c != '\n') {
+        if (!is_target) {
+          c = toupper(c);
+          if (string("ACGT").find(c) == string::npos) {
+            continue;
+          }
+        }
         sequence.push_back(c);
       }
     }
@@ -177,6 +187,32 @@ void process_target_sequence() {
   target_seq = move(cleaned_seq);
 }
 
+void encode_sequence(vector<char>& sequence, vector<int>& encoded_sequence) {
+  /**
+   * Encode cleaned sequence into a numerical format for compression
+   * A=0, C=1, G=2, T=3
+   */
+  for (int i = 0; i < sequence.size(); ++i) {
+    char c = sequence[i];
+    switch (c) {
+      case 'A':
+        encoded_sequence.push_back(0);
+        break;
+      case 'C':
+        encoded_sequence.push_back(1);
+        break;
+      case 'G':
+        encoded_sequence.push_back(2);
+        break;
+      case 'T':
+        encoded_sequence.push_back(3);
+        break;
+      default:
+        continue;
+    }
+  }
+}
+
 void handle_mismatch(int pos, int length) {
   /**
    * Handle mismatched regions between reference and target genomes
@@ -240,6 +276,10 @@ int main(int argc, char* argv[]) {
 
     build_hash_table();
     process_target_sequence();
+
+    encode_sequence(target_seq, target_seq_encoded);
+    encode_sequence(ref_seq, ref_seq_encoded);
+
     compress_sequences();
 
     cout << "Compression completed successfully." << endl;
