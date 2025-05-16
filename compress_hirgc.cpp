@@ -1,3 +1,5 @@
+#include <sys/time.h>
+
 #include <cctype>
 #include <cstring>
 #include <fstream>
@@ -41,6 +43,8 @@ vector<SpecialChar> special_chars;
 vector<int> line_breaks;
 string mismatch_buffer;
 string header;
+unsigned long timer;
+struct timeval timer_start, timer_end;
 
 void showHelpMessage(string reason) {
   /**
@@ -251,6 +255,9 @@ int main(int argc, char* argv[]) {
    * Main function for compressing files using HIRGC algorithm.
    */
 
+  // Start tracking time taken for compression
+  gettimeofday(&timer_start, nullptr);
+
   // Check if passed arguments are valid
   if (argc != 5) {
     showHelpMessage("Invalid number of arguments.");
@@ -290,6 +297,13 @@ int main(int argc, char* argv[]) {
   }
 
   cleanup();
+
+  // Calculate and print the total time taken for compression
+  gettimeofday(&timer_end, nullptr);
+
+  timer = 1000000 * (timer_end.tv_sec - timer_start.tv_sec) +
+          timer_end.tv_usec - timer_start.tv_usec;
+  printf("Total compresion time : %lf ms; \n", timer / 1000.0);
 
   return 0;
 }
