@@ -88,7 +88,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
     }
 
     for (char c : line) {
-      if (isalpha(c)) {
+      if (c != '\n') {
         sequence.push_back(c);
       }
     }
@@ -127,28 +127,54 @@ void process_target_sequence() {
 
   for (int i = 0; i < target_seq.size(); ++i) {
     char c = target_seq[i];
+
     if (islower(c)) {
       if (!in_lowercase) {
         lowercase_start = i;
         in_lowercase = true;
       }
+      target_seq[i] = toupper(c);
     } else if (in_lowercase) {
       lowercase_ranges.push_back({lowercase_start, i - lowercase_start});
       in_lowercase = false;
     }
-    if (c == 'N') {
+
+    if (toupper(c) == 'N') {
       if (!in_n_region) {
         n_start = i;
         in_n_region = true;
       }
+      target_seq[i] = '_';  // '_' marks chars to be removed
     } else if (in_n_region) {
       n_ranges.push_back({n_start, i - n_start});
       in_n_region = false;
     }
-    if (!isalpha(c) && c != 'N') {
+
+    if (string("ACGTN").find(toupper(c)) == string::npos) {
       special_chars.push_back({i, c});
+      target_seq[i] = '_';  // Any char that is not ACGTN marked to be removed
+    }
+
+    if (i == target_seq.size() - 1) {
+      if (in_lowercase) {
+        lowercase_ranges.push_back({lowercase_start, i - lowercase_start});
+        in_lowercase = false;
+      }
+      if (in_n_region) {
+        n_ranges.push_back({n_start, i - n_start});
+        in_n_region = false;
+      }
     }
   }
+
+  // Remove all '_' characters from the sequence
+  vector<char> cleaned_seq;
+  for (char c : target_seq) {
+    if (c != '_') {
+      cleaned_seq.push_back(c);
+    }
+  }
+  target_seq = move(cleaned_seq);
 }
 
 void handle_mismatch(int pos, int length) {
