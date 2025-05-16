@@ -1,10 +1,10 @@
-#include <cstring>
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <unordered_map>
 #include <cctype>
+#include <cstring>
+#include <fstream>
+#include <iostream>
 #include <stdexcept>
+#include <unordered_map>
+#include <vector>
 
 using namespace std;
 
@@ -38,6 +38,7 @@ vector<PositionRange> n_ranges;
 vector<SpecialChar> special_chars;
 vector<int> line_breaks;
 string mismatch_buffer;
+string header;
 
 void showHelpMessage(string reason) {
   /**
@@ -59,9 +60,11 @@ void initialize_structures() {
   mismatch_buffer.reserve(INITIAL_BUFFER_SIZE);
 }
 
-void load_sequence(const string& filename, vector<char>& sequence) {
+void load_sequence(const string& filename, vector<char>& sequence,
+                   bool is_target) {
   /**
    * Load genome sequence from FASTA file into memory
+   * Store line breaks and header info for target sequence
    */
   ifstream file(filename);
   if (!file) {
@@ -70,13 +73,29 @@ void load_sequence(const string& filename, vector<char>& sequence) {
 
   string line;
   while (getline(file, line)) {
-    if (line.empty() || line[0] == '>') continue; // Skip header/empty lines
-        
+    if (line[0] == '>') {  // Skip header line for reference, store for target
+      if (is_target) {
+        header = line;
+      }
+      continue;
+    };
+
+    if (line.empty()) {  // Skip empty lines for reference, store for target
+      if (is_target) {
+        line_breaks.push_back(sequence.size());
+      }
+      continue;
+    }
+
     for (char c : line) {
       if (isalpha(c)) {
         sequence.push_back(c);
       }
     }
+
+    if (is_target)
+      line_breaks.push_back(
+          sequence.size());  // Store end of line line breaks for target
   }
 }
 
@@ -109,13 +128,13 @@ void process_target_sequence() {
   for (int i = 0; i < target_seq.size(); ++i) {
     char c = target_seq[i];
     if (islower(c)) {
-        if (!in_lowercase) {
-          lowercase_start = i;
-          in_lowercase = true;
-        }
+      if (!in_lowercase) {
+        lowercase_start = i;
+        in_lowercase = true;
+      }
     } else if (in_lowercase) {
-        lowercase_ranges.push_back({lowercase_start, i - lowercase_start});
-        in_lowercase = false;
+      lowercase_ranges.push_back({lowercase_start, i - lowercase_start});
+      in_lowercase = false;
     }
     if (c == 'N') {
       if (!in_n_region) {
@@ -123,8 +142,8 @@ void process_target_sequence() {
         in_n_region = true;
       }
     } else if (in_n_region) {
-        n_ranges.push_back({n_start, i - n_start});
-        in_n_region = false;
+      n_ranges.push_back({n_start, i - n_start});
+      in_n_region = false;
     }
     if (!isalpha(c) && c != 'N') {
       special_chars.push_back({i, c});
@@ -139,14 +158,15 @@ void handle_mismatch(int pos, int length) {
   if (pos + length > target_seq.size()) {
     throw out_of_range("Mismatch position out of bounds");
   }
-  mismatch_buffer.append(target_seq.begin() + pos, target_seq.begin() + pos + length);
+  mismatch_buffer.append(target_seq.begin() + pos,
+                         target_seq.begin() + pos + length);
 }
 
 void compress_sequences() {
-    //
-    // 1. Use kmer_hash_table to find matches
-    // 2. Call handle_mismatch() for non-matching regions
-    // 3. Generate compressed output
+  //
+  // 1. Use kmer_hash_table to find matches
+  // 2. Call handle_mismatch() for non-matching regions
+  // 3. Generate compressed output
   cout << "Compressing..." << endl;
 }
 
@@ -186,24 +206,21 @@ int main(int argc, char* argv[]) {
   input_file_names.reference_file = argv[2];
   input_file_names.target_file = argv[4];
 
-  cout << "Reference: " << input_file_names.reference_file << endl;
-  cout << "Target: " << input_file_names.target_file << endl;
-
   initialize_structures();
-  
+
   try {
-      load_sequence(input_file_names.reference_file, ref_seq);
-      load_sequence(input_file_names.target_file, target_seq);
-        
-      build_hash_table();
-      process_target_sequence();
-      compress_sequences();
-        
-      cout << "Compression completed successfully." << endl;
+    load_sequence(input_file_names.reference_file, ref_seq, false);
+    load_sequence(input_file_names.target_file, target_seq, true);
+
+    build_hash_table();
+    process_target_sequence();
+    compress_sequences();
+
+    cout << "Compression completed successfully." << endl;
   } catch (const exception& e) {
-      cerr << "Error: " << e.what() << endl;
-      cleanup();
-      return 1;
+    cerr << "Error: " << e.what() << endl;
+    cleanup();
+    return 1;
   }
 
   cleanup();
