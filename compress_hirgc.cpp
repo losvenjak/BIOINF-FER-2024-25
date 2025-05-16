@@ -1,5 +1,6 @@
 #include <sys/time.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <fstream>
@@ -36,7 +37,7 @@ vector<char> ref_seq;
 vector<char> target_seq;
 vector<int> target_seq_encoded;
 vector<int> ref_seq_encoded;
-unordered_map<string, vector<int>> kmer_hash_table;
+unordered_map<uint64_t, vector<int>> kmer_hash_table;
 vector<PositionRange> lowercase_ranges;
 vector<PositionRange> n_ranges;
 vector<SpecialChar> special_chars;
@@ -115,15 +116,30 @@ void load_sequence(const string& filename, vector<char>& sequence,
 
 void build_hash_table() {
   /**
-   * Build hash table of k-mers from the reference sequence
+   * Build hash table of k-mers from the reference sequence using rolling hash
    */
+
   if (ref_seq.size() < KMER_LENGTH) {
     throw runtime_error("Reference sequence too short for k-mer size");
   }
 
-  for (int i = 0; i <= ref_seq.size() - KMER_LENGTH; ++i) {
-    string kmer(ref_seq.begin() + i, ref_seq.begin() + i + KMER_LENGTH);
-    kmer_hash_table[kmer].push_back(i);
+  // Compute first k-mer value
+  uint64_t value = 0;
+  for (int k = 0; k < KMER_LENGTH; k++) {
+    value <<= 2;
+    value |= (ref_seq_encoded[k]);
+  }
+  kmer_hash_table[value].push_back(0);
+
+  // Compute a rolling integer for the rest of the sequence
+  const uint64_t mask =
+      (1ULL << (2 * KMER_LENGTH)) - 1;  // Mask for removing oldest two bits
+
+  for (int k = KMER_LENGTH; k < ref_seq_encoded.size(); k++) {
+    value <<= 2;
+    value |= (ref_seq_encoded[k]);
+    value &= mask;
+    kmer_hash_table[value].push_back(k - KMER_LENGTH + 1);
   }
 }
 
@@ -281,12 +297,12 @@ int main(int argc, char* argv[]) {
     load_sequence(input_file_names.reference_file, ref_seq, false);
     load_sequence(input_file_names.target_file, target_seq, true);
 
-    build_hash_table();
     process_target_sequence();
 
     encode_sequence(target_seq, target_seq_encoded);
     encode_sequence(ref_seq, ref_seq_encoded);
 
+    build_hash_table();
     compress_sequences();
 
     cout << "Compression completed successfully." << endl;
