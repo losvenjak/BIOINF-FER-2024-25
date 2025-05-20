@@ -247,6 +247,34 @@ void handle_mismatch(int pos, int length) {
                          target_seq.begin() + pos + length);
 }
 
+template <typename T>
+void write_run_length_encoded(ostream& out, const vector<T>& values) {
+  /**
+   * Compress and write data using run-length encoding (RLE)
+   * group consecutive identical values into (value, count) pairs
+   */
+  if (values.empty()) {
+    out.write("\0", 1); // Empty marker
+    return;
+  }
+
+  T current = values[0];
+  int count = 1;
+    
+  for (size_t i = 1; i < values.size(); ++i) {
+    if (values[i] == current) {
+      count++;
+    } else {
+        out.write(reinterpret_cast<const char*>(&current), sizeof(current));
+        out.write(reinterpret_cast<const char*>(&count), sizeof(count));
+        current = values[i];
+        count = 1;
+    }
+  }
+  out.write(reinterpret_cast<const char*>(&current), sizeof(current));
+  out.write(reinterpret_cast<const char*>(&count), sizeof(count));
+}
+
 void write_metadata(const string& output_filename) {
   /**
    * Write all auxiliary metadata needed for decompression
@@ -260,7 +288,7 @@ void write_metadata(const string& output_filename) {
   out.write(reinterpret_cast<const char*>(&header_length), sizeof(header_length));
   out.write(header.c_str(), header_length);
 
-  //write_run_length_encoded(out, line_breaks);
+  write_run_length_encoded(out, line_breaks);
 
   uint32_t num_lowercase = lowercase_ranges.size();
   out.write(reinterpret_cast<const char*>(&num_lowercase), sizeof(num_lowercase));
