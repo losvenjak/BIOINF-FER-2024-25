@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+#include <bitset>
+#include <map>
 
 using namespace std;
 
@@ -16,6 +18,8 @@ const int MAX_SEQ_LENGTH = 1 << 28;
 const int KMER_LENGTH = 20;
 const int HASH_TABLE_SIZE = 1 << 20;
 const int INITIAL_BUFFER_SIZE = 1024;
+const int BITS_PER_BYTE = 8;
+const int MAX_DELTA_BITS = 32;
 
 /// Struct for reference and target file names
 struct InputFileNames {
@@ -243,11 +247,80 @@ void handle_mismatch(int pos, int length) {
                          target_seq.begin() + pos + length);
 }
 
+void write_metadata(const string& output_filename) {
+  /**
+   * Write all auxiliary metadata needed for decompression
+   */
+  ofstream out(output_filename, ios::binary);
+  if (!out) {
+    throw runtime_error("Cannot open output file: " + output_filename);
+  }
+
+  uint32_t header_length = header.size();
+  out.write(reinterpret_cast<const char*>(&header_length), sizeof(header_length));
+  out.write(header.c_str(), header_length);
+
+  //write_run_length_encoded(out, line_breaks);
+
+  uint32_t num_lowercase = lowercase_ranges.size();
+  out.write(reinterpret_cast<const char*>(&num_lowercase), sizeof(num_lowercase));
+  for (const auto& range : lowercase_ranges) {
+    out.write(reinterpret_cast<const char*>(&range.start), sizeof(range.start));
+    out.write(reinterpret_cast<const char*>(&range.length), sizeof(range.length));
+  }
+
+  uint32_t num_n_ranges = n_ranges.size();
+  out.write(reinterpret_cast<const char*>(&num_n_ranges), sizeof(num_n_ranges));
+  for (const auto& range : n_ranges) {
+    out.write(reinterpret_cast<const char*>(&range.start), sizeof(range.start));
+    out.write(reinterpret_cast<const char*>(&range.length), sizeof(range.length));
+  }
+
+  map<char, uint8_t> char_to_code;
+  vector<char> unique_chars;
+  for (const auto& sc : special_chars) {
+    if (char_to_code.find(sc.ch) == char_to_code.end()) {
+      char_to_code[sc.ch] = unique_chars.size();
+      unique_chars.push_back(sc.ch);
+    }
+  }
+
+  uint8_t num_unique_chars = unique_chars.size();
+  out.write(reinterpret_cast<const char*>(&num_unique_chars), sizeof(num_unique_chars));
+  out.write(unique_chars.data(), num_unique_chars);
+
+  // delta encoded positions and character codes
+  if (!special_chars.empty()) {
+    int prev_pos = 0;
+    bitset<MAX_DELTA_BITS> delta_bits;
+        
+    for (const auto& sc : special_chars) {
+      int delta = sc.pos - prev_pos;
+      prev_pos = sc.pos;
+            
+      do {
+        uint8_t byte = delta & 0x7F;
+        delta >>= 7;
+        if (delta != 0) byte |= 0x80;
+        out.write(reinterpret_cast<const char*>(&byte), sizeof(byte));
+      } while (delta != 0);
+            
+      uint8_t code = char_to_code[sc.ch];
+      out.write(reinterpret_cast<const char*>(&code), sizeof(code));
+    }
+  }
+
+  out.close();
+}
+
 void compress_sequences() {
   //
   // 1. Use kmer_hash_table to find matches
   // 2. Call handle_mismatch() for non-matching regions
   // 3. Generate compressed output
+  string metadata_file = "output.meta";
+  write_metadata(metadata_file);
+  cout << "Metadata written to " << metadata_file << endl;
   cout << "Compressing..." << endl;
 }
 
