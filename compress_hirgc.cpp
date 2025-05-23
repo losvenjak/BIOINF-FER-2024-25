@@ -37,6 +37,12 @@ struct SpecialChar {
   char ch;
 };
 
+struct Match {
+  int ref_pos;
+  int tar_pos;
+  int length;
+};
+
 vector<char> ref_seq;
 vector<char> target_seq;
 vector<char> ref_seq_cleaned;
@@ -346,6 +352,80 @@ void compress_sequences() {
   // 1. Use kmer_hash_table to find matches
   // 2. Call handle_mismatch() for non-matching regions
   // 3. Generate compressed output
+  vector<Match> matches;
+  vector<char> mismatches;
+  matches.reserve(target_seq_encoded.size() / 100 + 1000);
+  mismatches.reserve(10000);
+  
+  int tar_pos = 0;
+  int prev_ref_pos = 0;
+  int prev_tar_pos = 0;
+  int total_matched = 0;
+  int total_mismatched = 0;
+  
+  while (tar_pos < target_seq_encoded.size()) {
+    int match_ref_pos, match_length;
+    //find_longest_match(tar_pos, match_ref_pos, match_length);
+
+    if (match_length >= KMER_LENGTH) {
+      if (!mismatches.empty()) {
+        handle_mismatch(prev_tar_pos, mismatches.size());
+        total_mismatched += mismatches.size();
+        mismatches.clear();
+      }
+      int delta_ref = match_ref_pos - prev_ref_pos;
+      int delta_tar = tar_pos - prev_tar_pos;
+      matches.push_back({delta_ref, delta_tar, match_length});
+      total_matched += match_length;
+      prev_ref_pos = match_ref_pos + match_length;
+      prev_tar_pos = tar_pos + match_length;
+      tar_pos += match_length;
+    } else {
+        mismatches.push_back(target_seq[tar_pos]);
+        tar_pos++;
+    }
+  }
+  
+  if (!mismatches.empty()) {
+    handle_mismatch(prev_tar_pos, mismatches.size());
+    total_mismatched += mismatches.size();
+  }
+
+  string compressed_file = "output.compressed";
+  ofstream out(compressed_file, ios::binary);
+  if (!out) {
+    throw runtime_error("Cannot open output file: " + compressed_file);
+  }
+  
+  vector<uint8_t> match_buffer;
+  match_buffer.reserve(matches.size() * 12);  
+  
+  uint32_t num_matches = matches.size();
+  const uint8_t* num_matches_bytes = reinterpret_cast<const uint8_t*>(&num_matches);
+  match_buffer.insert(match_buffer.end(), num_matches_bytes, num_matches_bytes + sizeof(num_matches));
+  
+  for (const auto& match : matches) {
+    auto encode_varint = [&match_buffer](int value) {
+      while (value > 0x7F) {
+        match_buffer.push_back((value & 0x7F) | 0x80);
+        value >>= 7;
+      }
+      match_buffer.push_back(value & 0x7F);
+    };
+
+    encode_varint(match.ref_pos);
+    encode_varint(match.tar_pos);
+    encode_varint(match.length);
+  }
+  
+  out.write(reinterpret_cast<const char*>(match_buffer.data()), match_buffer.size());
+
+  uint32_t mismatch_length = mismatch_buffer.size();
+  out.write(reinterpret_cast<const char*>(&mismatch_length), sizeof(mismatch_length));
+  out.write(mismatch_buffer.data(), mismatch_length);
+
+  out.close();
+
   string metadata_file = "output.meta";
   write_metadata(metadata_file);
   cout << "Metadata written to " << metadata_file << endl;
