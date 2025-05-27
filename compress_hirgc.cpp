@@ -354,6 +354,10 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
      */
   match_ref_pos = -1;
   match_length = 0;
+  
+  if (tar_pos + KMER_LENGTH > target_seq_encoded.size()) {
+    return;
+  }
 
   uint64_t target_hash = 0;
   for (int k = 0; k < KMER_LENGTH; k++) {
