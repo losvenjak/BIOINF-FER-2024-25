@@ -347,6 +347,44 @@ void write_metadata(const string& output_filename) {
   out.close();
 }
 
+void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
+    /**
+     * Finds the longest match between target and reference sequences starting at tar_pos
+     * Uses the k-mer hash table to find candidate positions
+     */
+  match_ref_pos = -1;
+  match_length = 0;
+
+  uint64_t target_hash = 0;
+  for (int k = 0; k < KMER_LENGTH; k++) {
+    target_hash <<= 2;
+    target_hash |= target_seq_encoded[tar_pos + k];
+  }
+
+  auto it = kmer_hash_table.find(target_hash);
+  if (it == kmer_hash_table.end()) {
+    return; 
+  }
+
+  for (int ref_pos : it->second) {
+    int max_possible_length = min(
+        (int)ref_seq_encoded.size() - ref_pos,
+        (int)target_seq_encoded.size() - tar_pos
+    );
+        
+    int current_length = KMER_LENGTH;
+    while (current_length < max_possible_length && 
+           ref_seq_encoded[ref_pos + current_length] == target_seq_encoded[tar_pos + current_length]) {
+      current_length++;
+    }
+
+    if (current_length > match_length) {
+      match_length = current_length;
+      match_ref_pos = ref_pos;
+    }
+  }
+}
+
 void compress_sequences() {
   //
   // 1. Use kmer_hash_table to find matches
@@ -365,7 +403,7 @@ void compress_sequences() {
   
   while (tar_pos < target_seq_encoded.size()) {
     int match_ref_pos, match_length;
-    //find_longest_match(tar_pos, match_ref_pos, match_length);
+    find_longest_match(tar_pos, match_ref_pos, match_length);
 
     if (match_length >= KMER_LENGTH) {
       if (!mismatches.empty()) {
@@ -428,8 +466,12 @@ void compress_sequences() {
 
   string metadata_file = "output.meta";
   write_metadata(metadata_file);
+  cout << "Total matched bases: " << total_matched << endl;
+  cout << "Total mismatched bases: " << total_mismatched << endl;
+  cout << "Compression ratio: " 
+       << (100.0 * (total_matched) / (total_matched + total_mismatched)) << "%" << endl;
   cout << "Metadata written to " << metadata_file << endl;
-  cout << "Compressing..." << endl;
+  cout << "Compressed data written to " << compressed_file << endl;
 }
 
 void cleanup() {
