@@ -7,14 +7,25 @@ using namespace std;
 
 const int MAX_SEQ_LENGTH = 1 << 28;
 
-/// Struct for reference and target file names
 struct InputFileNames {
   string reference_file;
   string compressed_target_file;
 };
 
+struct Mismatch {
+  vector<int> values;
+  int continue_for;
+};
+
 vector<char> ref_seq;
 vector<char> target_seq;
+string header;
+vector<int> line_lenghts;
+vector<int> lower_case_ranges;
+vector<int> n_ranges;
+vector<int> special_chars;
+vector<Mismatch> mismatch_data;
+int mismatch_offset = 0;
 
 void show_help_message(string reason) {
   /**
@@ -50,7 +61,7 @@ void load_and_clean_reference(const string& filename, vector<char>& sequence) {
   while (getline(file, line)) {
     if (line[0] == '>') {  // Skip header line
       continue;
-    };
+    }
 
     if (line.empty()) {  // Skip empty lines
       continue;
@@ -60,9 +71,199 @@ void load_and_clean_reference(const string& filename, vector<char>& sequence) {
       c = toupper(c);  // Convert to uppercase
       if (c == 'A' || c == 'C' || c == 'G' || c == 'T') {
         sequence.push_back(c);
-        cout << c;
       }
     }
+  }
+}
+
+void load_metadata(const string& filename) {
+  /**
+   * Load metadata from the compressed target file
+   * Reads the header, line lengths, lowercase ranges,
+   * N ranges, special characters and mismatch offset
+   */
+
+  ifstream file(filename, ios::binary);
+  if (!file) {
+    throw runtime_error("Cannot open file: " + filename);
+  }
+
+  string temp;
+  int curr;
+
+  // Read the header line
+  getline(file, temp);
+  header = temp;
+
+  getline(file, temp);  // Skip empty line after header
+
+  // Read the line lengths
+  getline(file, temp);
+  curr = temp[0] - '0';
+
+  for (size_t i = 1; i < temp.size(); ++i) {
+    char c = temp[i];
+
+    if (c == ' ') {
+      line_lenghts.push_back(curr);
+      curr = 0;
+    } else {
+      curr = curr * 10 + (c - '0');
+    }
+  }
+  line_lenghts.push_back(curr);
+
+  // Read the lowercase ranges
+  getline(file, temp);
+  curr = temp[0] - '0';
+
+  for (size_t i = 1; i < temp.size(); ++i) {
+    char c = temp[i];
+
+    if (c == ' ') {
+      lower_case_ranges.push_back(curr);
+      cout << curr << " ";
+      curr = 0;
+    } else {
+      curr = curr * 10 + (c - '0');
+    }
+  }
+  lower_case_ranges.push_back(curr);
+
+  // Read the N ranges
+  getline(file, temp);
+  curr = temp[0] - '0';
+
+  for (size_t i = 1; i < temp.size(); ++i) {
+    char c = temp[i];
+
+    if (c == ' ') {
+      n_ranges.push_back(curr);
+      curr = 0;
+    } else {
+      curr = curr * 10 + (c - '0');
+    }
+  }
+  n_ranges.push_back(curr);
+
+  // Read the special characters
+  getline(file, temp);
+  curr = temp[0] - '0';
+
+  for (size_t i = 1; i < temp.size(); ++i) {
+    char c = temp[i];
+
+    if (c == ' ') {
+      special_chars.push_back(curr);
+      curr = 0;
+    } else {
+      curr = curr * 10 + (c - '0');
+    }
+  }
+  special_chars.push_back(curr);
+
+  // Check mismatched offset
+  getline(file, temp);
+  if (temp[0] == '0') {
+    int pos = 0;
+    for (int i = 2; i < temp.size(); i++) {
+      pos = pos * 10 + (temp[i] - '0');
+    }
+    mismatch_offset = pos;
+  }
+
+  cout << "Mismatch offset: " << mismatch_offset << endl;
+
+  cout << "Line lengths: ";
+  for (int i : line_lenghts) {
+    cout << i << " ";
+  }
+  cout << endl;
+
+  cout << "Lowercase ranges: ";
+  for (int i : lower_case_ranges) {
+    cout << i << " ";
+  }
+  cout << endl;
+
+  cout << "N ranges: ";
+  for (int i : n_ranges) {
+    cout << i << " ";
+  }
+  cout << endl;
+
+  cout << "Special characters: ";
+  for (int i : special_chars) {
+    cout << i << " ";
+  }
+  cout << endl;
+}
+
+void load_mismatch_data(const string& filename) {
+  /**
+   * Load mismatch data from the compressed target file
+   * Stores the mismatched values
+   */
+  ifstream file(filename, ios::binary);
+  if (!file) {
+    throw runtime_error("Cannot open file: " + filename);
+  }
+
+  // Skip the header and metadata lines
+  string temp;
+  for (int i = 0; i < 6; ++i) {
+    getline(file, temp);
+  }
+  // Skip the mismatch offset line if present
+  if (mismatch_offset != 0) {
+    getline(file, temp);
+  }
+
+  // Read mismatch data
+  vector<int> values;
+  int continue_for;
+
+  while (getline(file, temp)) {
+    Mismatch mismatch;
+    for (char c : temp) {
+      mismatch.values.push_back(c - '0');
+    }
+
+    getline(file, temp);
+    int pos = 0;
+    int index = temp.find(' ') + 1;
+    for (int i = index; i < temp.size(); i++) {
+      pos = pos * 10 + (temp[i] - '0');
+    }
+
+    mismatch.continue_for = pos;
+
+    mismatch_data.push_back(mismatch);
+  }
+
+  for (const auto& mismatch : mismatch_data) {
+    cout << "Mismatch : ";
+    for (int value : mismatch.values) {
+      cout << value << " ";
+    }
+    cout << ", continue for: " << mismatch.continue_for << endl;
+  }
+}
+
+void decompress_target_sequence(const string& filename,
+                                vector<char>& sequence) {
+  /**
+   * Decompress the target sequence from the compressed file
+   */
+  ifstream file(filename, ios::binary);
+  if (!file) {
+    throw runtime_error("Cannot open file: " + filename);
+  }
+
+  char c;
+  while (file.get(c)) {
+    sequence.push_back(c);
+    // cout << c;
   }
 }
 
@@ -90,7 +291,8 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  // Assign the reference and target file paths from the command line arguments
+  // Assign the reference and target file paths from the command line
+  // arguments
   InputFileNames input_file_names;
 
   input_file_names.reference_file = argv[2];
@@ -99,6 +301,11 @@ int main(int argc, char* argv[]) {
   initialize_structures();
 
   load_and_clean_reference(input_file_names.reference_file, ref_seq);
+
+  load_metadata(input_file_names.compressed_target_file);
+  load_mismatch_data(input_file_names.compressed_target_file);
+  decompress_target_sequence(input_file_names.compressed_target_file,
+                             target_seq);
 
   cout << "Decompressing..." << endl;
 
