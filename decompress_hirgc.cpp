@@ -280,6 +280,56 @@ void add_special_characters(vector<char>& target_seq) {
   }
 }
 
+void add_n_ranges(vector<char>& target_seq) {
+  /**
+   * Adds N ranges to the target sequence
+   * based on the N ranges defined in the metadata
+   */
+  int n_ranges_num = n_ranges[0];
+
+  if (n_ranges_num == 0) {
+    return;
+  }
+
+  // For each position-length pair in n_ranges insert 'N's
+  int prev_pos = 0;
+  for (int i = 1; i < n_ranges_num * 2 + 1; i += 2) {
+    int start = n_ranges[i];
+    int length = n_ranges[i + 1];
+
+    for (int j = 0; j < length; j++) {
+      target_seq.insert(target_seq.begin() + prev_pos + start, 'N');
+    }
+    prev_pos = start;
+  }
+}
+
+void add_lowercase_ranges(vector<char>& target_seq) {
+  /**
+   * Adds lowercase ranges to the target sequence
+   * based on the lowercase ranges defined in the metadata
+   */
+  int lower_case_ranges_num = lower_case_ranges[0];
+
+  if (lower_case_ranges_num == 0) {
+    return;
+  }
+
+  // For each position-length pair change letters to lowercase
+  int prev_pos = 0;
+  for (int i = 1; i < lower_case_ranges_num * 2 + 1; i += 2) {
+    int start = lower_case_ranges[i];
+    int length = lower_case_ranges[i + 1];
+
+    for (int j = 0; j < length; j++) {
+      target_seq[j + start + prev_pos] =
+          tolower(target_seq[j + start + prev_pos]);
+    }
+
+    prev_pos = start + length;
+  }
+}
+
 void cleanup() {
   /**
    * Cleans up and releases all allocated memory
@@ -326,6 +376,8 @@ int main(int argc, char* argv[]) {
   decompress_target_sequence(target_seq);
 
   add_special_characters(target_seq);
+  add_n_ranges(target_seq);
+  add_lowercase_ranges(target_seq);
 
   cout << "Target Sequence: " << endl;
   for (char c : target_seq) {
