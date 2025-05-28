@@ -25,7 +25,7 @@ The High-speed and High-ratio Referential Genome Compression Algorithm addresses
     make decompress_hirgc
 
 # Compress
-    ./compress_hirgc
+    ./compress_hirgc -r <reference_file_name> -t <target_file_name>
 
 # Decompress
-    ./decompress_hirgc
+    ./decompress_hirgc -r <reference_file_name> -t <target_file_name>

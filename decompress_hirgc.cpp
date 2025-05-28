@@ -330,6 +330,39 @@ void add_lowercase_ranges(vector<char>& target_seq) {
   }
 }
 
+void write_reconstructed_sequence_to_file() {
+  /**
+   * Writes the reconstructed target sequence to a file
+   */
+  string output_filename = "reconstructed_sequence.txt";
+  ofstream out(output_filename);
+  if (!out) {
+    throw runtime_error("Cannot open output file: " + output_filename);
+  }
+
+  out << header << endl;  // Write the header
+
+  out << endl;  // Write an empty line after the header
+
+  // Add new line characters based on the line lengths
+  int line_length_values_num = line_lenghts[0];
+  int curr_seq_position = 0;
+
+  for (int i = 1; i < line_length_values_num + 1; i += 2) {
+    int lenght = line_lenghts[i];
+    int repeat_cnt = line_lenghts[i + 1];
+
+    for (int j = 0; j < repeat_cnt; j++) {
+      for (int k = 0; k < lenght; k++) {
+        out << target_seq[curr_seq_position + k];
+      }
+      out << endl;
+      curr_seq_position += lenght;
+    }
+  }
+  out.close();
+}
+
 void cleanup() {
   /**
    * Cleans up and releases all allocated memory
@@ -378,6 +411,8 @@ int main(int argc, char* argv[]) {
   add_special_characters(target_seq);
   add_n_ranges(target_seq);
   add_lowercase_ranges(target_seq);
+
+  write_reconstructed_sequence_to_file();
 
   cout << "Target Sequence: " << endl;
   for (char c : target_seq) {
