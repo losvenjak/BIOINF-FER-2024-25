@@ -6,6 +6,8 @@
 using namespace std;
 
 const int MAX_SEQ_LENGTH = 1 << 28;
+const int KMER_LENGTH = 20;
+const vector<char> decode_into_base = {'A', 'C', 'G', 'T'};
 
 struct InputFileNames {
   string reference_file;
@@ -24,6 +26,7 @@ vector<int> line_lenghts;
 vector<int> lower_case_ranges;
 vector<int> n_ranges;
 vector<int> special_chars;
+vector<int> special_chars_order;
 vector<Mismatch> mismatch_data;
 int mismatch_offset = 0;
 
@@ -46,7 +49,7 @@ void initialize_structures() {
   target_seq.reserve(MAX_SEQ_LENGTH);
 }
 
-void load_and_clean_reference(const string& filename, vector<char>& sequence) {
+void load_and_clean_reference(const string& filename, vector<char>& ref_seq) {
   /**
    * Load and clean reference genome sequence
    * removes any non-ACGT characters, converts to uppercase
@@ -70,7 +73,7 @@ void load_and_clean_reference(const string& filename, vector<char>& sequence) {
     for (char c : line) {
       c = toupper(c);  // Convert to uppercase
       if (c == 'A' || c == 'C' || c == 'G' || c == 'T') {
-        sequence.push_back(c);
+        ref_seq.push_back(c);
       }
     }
   }
@@ -122,7 +125,6 @@ void load_metadata(const string& filename) {
 
     if (c == ' ') {
       lower_case_ranges.push_back(curr);
-      cout << curr << " ";
       curr = 0;
     } else {
       curr = curr * 10 + (c - '0');
@@ -148,9 +150,10 @@ void load_metadata(const string& filename) {
 
   // Read the special characters
   getline(file, temp);
+  int order_list_start = temp.rfind(' ') + 1;
   curr = temp[0] - '0';
 
-  for (size_t i = 1; i < temp.size(); ++i) {
+  for (size_t i = 1; i < order_list_start; ++i) {
     char c = temp[i];
 
     if (c == ' ') {
@@ -162,6 +165,11 @@ void load_metadata(const string& filename) {
   }
   special_chars.push_back(curr);
 
+  for (int i = order_list_start; i < temp.size(); ++i) {
+    char c = temp[i];
+    special_chars_order.push_back(c - '0');
+  }
+
   // Check mismatched offset
   getline(file, temp);
   if (temp[0] == '0') {
@@ -171,32 +179,6 @@ void load_metadata(const string& filename) {
     }
     mismatch_offset = pos;
   }
-
-  cout << "Mismatch offset: " << mismatch_offset << endl;
-
-  cout << "Line lengths: ";
-  for (int i : line_lenghts) {
-    cout << i << " ";
-  }
-  cout << endl;
-
-  cout << "Lowercase ranges: ";
-  for (int i : lower_case_ranges) {
-    cout << i << " ";
-  }
-  cout << endl;
-
-  cout << "N ranges: ";
-  for (int i : n_ranges) {
-    cout << i << " ";
-  }
-  cout << endl;
-
-  cout << "Special characters: ";
-  for (int i : special_chars) {
-    cout << i << " ";
-  }
-  cout << endl;
 }
 
 void load_mismatch_data(const string& filename) {
@@ -240,30 +222,61 @@ void load_mismatch_data(const string& filename) {
 
     mismatch_data.push_back(mismatch);
   }
+}
 
-  for (const auto& mismatch : mismatch_data) {
-    cout << "Mismatch : ";
-    for (int value : mismatch.values) {
-      cout << value << " ";
+void decompress_target_sequence(vector<char>& target_seq) {
+  /**
+   * Decompress the target sequence from the compressed file
+   * Reconstructs the target sequence using the reference sequence
+   */
+  if (mismatch_offset != 0) {
+    for (int i = 0; i < mismatch_offset + KMER_LENGTH; i++) {
+      target_seq.push_back(ref_seq[i]);
     }
-    cout << ", continue for: " << mismatch.continue_for << endl;
+  }
+
+  for (Mismatch& mismatch : mismatch_data) {
+    for (int i = 0; i < mismatch.values.size(); i++) {
+      target_seq.push_back(decode_into_base[mismatch.values[i]]);
+    }
+    for (int i = 0; i < mismatch.continue_for + KMER_LENGTH; i++) {
+      target_seq.push_back(ref_seq[target_seq.size()]);
+    }
   }
 }
 
-void decompress_target_sequence(const string& filename,
-                                vector<char>& sequence) {
+void add_special_characters(vector<char>& target_seq) {
   /**
-   * Decompress the target sequence from the compressed file
+   * Adds special characters to the target sequence
+   * based on the special character ranges
    */
-  ifstream file(filename, ios::binary);
-  if (!file) {
-    throw runtime_error("Cannot open file: " + filename);
+  int special_char_num = special_chars[0];
+  int unique_special_chars_num = special_chars[special_char_num + 1];
+  vector<int> special_chars_positions;
+  vector<char> unique_special_chars_decoded;
+
+  if (special_char_num == 0) {
+    return;
   }
 
-  char c;
-  while (file.get(c)) {
-    sequence.push_back(c);
-    // cout << c;
+  // Store positions of special characters
+  int pos = 0;
+  for (int i = 1; i < special_char_num + 1; i++) {
+    pos += special_chars[i];
+    special_chars_positions.push_back(pos);
+    pos += 1;
+  }
+
+  // Decode special characters
+  for (int i = special_char_num + 2;
+       i < special_char_num + unique_special_chars_num + 2; i++) {
+    unique_special_chars_decoded.push_back(special_chars[i] + 'A');
+  }
+
+  // Insert special characters into the target sequence
+  for (int i = 0; i < special_chars_order.size(); i++) {
+    target_seq.insert(target_seq.begin() + special_chars_positions[i],
+                      unique_special_chars_decoded[special_chars_order[i]]);
   }
 }
 
@@ -291,8 +304,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  // Assign the reference and target file paths from the command line
-  // arguments
+  // Assign the reference and target file paths from the command line arguments
   InputFileNames input_file_names;
 
   input_file_names.reference_file = argv[2];
@@ -304,8 +316,22 @@ int main(int argc, char* argv[]) {
 
   load_metadata(input_file_names.compressed_target_file);
   load_mismatch_data(input_file_names.compressed_target_file);
-  decompress_target_sequence(input_file_names.compressed_target_file,
-                             target_seq);
+
+  cout << "Reference Sequence: " << endl;
+  for (char c : ref_seq) {
+    cout << c;
+  }
+  cout << endl;
+
+  decompress_target_sequence(target_seq);
+
+  add_special_characters(target_seq);
+
+  cout << "Target Sequence: " << endl;
+  for (char c : target_seq) {
+    cout << c;
+  }
+  cout << endl;
 
   cout << "Decompressing..." << endl;
 
