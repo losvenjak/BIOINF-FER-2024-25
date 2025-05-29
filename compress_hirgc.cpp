@@ -1,15 +1,17 @@
 #include <sys/time.h>
 
 #include <algorithm>
+#include <bitset>
 #include <cctype>
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <set>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
-#include <bitset>
-#include <map>
 
 using namespace std;
 
@@ -20,6 +22,8 @@ const int HASH_TABLE_SIZE = 1 << 20;
 const int INITIAL_BUFFER_SIZE = 1024;
 const int BITS_PER_BYTE = 8;
 const int MAX_DELTA_BITS = 32;
+const unordered_map<char, int> base_to_index = {
+    {'A', 0}, {'C', 1}, {'G', 2}, {'T', 3}};
 
 /// Struct for reference and target file names
 struct InputFileNames {
@@ -43,6 +47,11 @@ struct Match {
   int length;
 };
 
+struct LineLength {
+  int length;
+  int repeat_count;
+};
+
 vector<char> ref_seq;
 vector<char> target_seq;
 vector<char> ref_seq_cleaned;
@@ -53,13 +62,14 @@ unordered_map<uint64_t, vector<int>> kmer_hash_table;
 vector<PositionRange> lowercase_ranges;
 vector<PositionRange> n_ranges;
 vector<SpecialChar> special_chars;
+vector<LineLength> line_lengths;
 vector<int> line_breaks;
 string mismatch_buffer;
 string header;
 unsigned long timer;
 struct timeval timer_start, timer_end;
 
-void showHelpMessage(string reason) {
+void show_help_message(string reason) {
   /**
    * Displays an error message along with usage instructions.
    * Used when the user provides invalid arguments.
@@ -93,7 +103,10 @@ void load_sequence(const string& filename, vector<char>& sequence,
   }
 
   string line;
+
   while (getline(file, line)) {
+    int length = 0;
+
     if (line[0] == '>') {  // Skip header line for reference, store for target
       if (is_target) {
         header = line;
@@ -117,13 +130,24 @@ void load_sequence(const string& filename, vector<char>& sequence,
           }
         }
         sequence.push_back(c);
+        length++;
       }
     }
 
-    if (is_target)
-      line_breaks.push_back(
-          sequence.size());  // Store end of line line breaks for target
+    if (is_target) {
+      if (!line_lengths.empty() &&
+          line_lengths[line_lengths.size() - 1].length == length) {
+        line_lengths[line_lengths.size() - 1].repeat_count++;
+      } else {
+        LineLength new_line_length;
+        new_line_length.length = length;
+        new_line_length.repeat_count = 1;
+        line_lengths.push_back(new_line_length);
+      }
+    }
   }
+
+  file.close();
 }
 
 void build_hash_table() {
@@ -253,87 +277,87 @@ void handle_mismatch(int pos, int length) {
                          target_seq.begin() + pos + length);
 }
 
-template <typename T>
-void write_run_length_encoded(ostream& out, const vector<T>& values) {
-  /**
-   * Compress and write data using run-length encoding (RLE)
-   * group consecutive identical values into (value, count) pairs
-   */
-  if (values.empty()) {
-    out << "0";
-    return;
-  }
-
-  T current = values[0];
-  int count = 1;
-    
-  for (size_t i = 1; i < values.size(); ++i) {
-    if (values[i] == current) {
-      count++;
-    } else {
-      out << current << " " << count << " ";
-      current = values[i];
-      count = 1;
-    }
-  }
-  out << current << " " << count;
-}
-
 void write_metadata(const string& output_filename) {
   /**
-   * Write all auxiliary metadata needed for decompression
+   * Write all auxiliary metadata needed for decompression as plain text
    */
   ofstream out(output_filename);
   if (!out) {
     throw runtime_error("Cannot open output file: " + output_filename);
   }
 
-  out << "HEADER:" << header << "\n\n";
-  out << "LINE_BREAKS:";
-  
-  for (size_t i = 0; i < line_breaks.size(); ++i) {
-    if (i != 0) out << ",";
-    out << line_breaks[i];
+  // Write header
+  out << header << "\n\n";
+
+  // Write line lengths
+  out << line_lengths.size() * 2;
+  for (const auto& line_length : line_lengths) {
+    out << " " << line_length.length << " " << line_length.repeat_count;
   }
-  
-  out << "\n\n";
-  out << "LOWERCASE_RANGES:" << lowercase_ranges.size() << "\n";
-  
-  for (const auto& range : lowercase_ranges) {
-    out << range.start << " " << range.length << "\n";
-  }
-  
   out << "\n";
-  out << "N_RANGES:" << n_ranges.size() << "\n";
-  
-  for (const auto& range : n_ranges) {
-    out << range.start << " " << range.length << "\n";
+
+  // Lowercase ranges
+  int last_position = 0;
+  out << lowercase_ranges.size();
+  for (const auto& r : lowercase_ranges) {
+    out << " " << r.start - last_position << " " << r.length;
+    last_position = r.start + r.length;
   }
-  
   out << "\n";
-  map<char, int> char_to_code;
+
+  // N ranges
+  last_position = 0;
+  out << n_ranges.size();
+  for (const auto& r : n_ranges) {
+    out << " " << r.start - last_position << " " << r.length;
+    last_position = r.start + r.length;
+  }
+  out << "\n";
+
+  // Special characters
+  set<char> seen;
   vector<char> unique_chars;
-  out << "SPECIAL_CHARS:" << special_chars.size() << "\n";
-  
+  last_position = 0;
+
+  out << special_chars.size();
   for (const auto& sc : special_chars) {
-    if (char_to_code.find(sc.ch) == char_to_code.end()) {
-      char_to_code[sc.ch] = unique_chars.size();
+    out << " " << sc.pos - last_position;
+    last_position = sc.pos + 1;
+
+    // Collect unique characters
+    if (seen.insert(sc.ch).second) {
       unique_chars.push_back(sc.ch);
     }
-    out << sc.pos << " " << sc.ch << "\n";
   }
+
+  if (unique_chars.size()) {
+    out << " " << unique_chars.size() << " ";
+  }
+
+  // Distances from 'A'
+  for (char ch : unique_chars) {
+    out << toupper(ch) - 'A' << " ";
+  }
+
+  // Unique chars pattern
+  for (const auto& sc : special_chars) {
+    auto it = find(unique_chars.begin(), unique_chars.end(), sc.ch);
+    out << distance(unique_chars.begin(), it);
+  }
+
+  out << "\n";
 
   out.close();
 }
 
 void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
-    /**
-     * Finds the longest match between target and reference sequences starting at tar_pos
-     * Uses the k-mer hash table to find candidate positions
-     */
+  /**
+   * Finds the longest match between target and reference sequences starting at
+   * tar_pos Uses the k-mer hash table to find candidate positions
+   */
   match_ref_pos = -1;
   match_length = 0;
-  
+
   if (tar_pos + KMER_LENGTH > target_seq_encoded.size()) {
     return;
   }
@@ -346,18 +370,17 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
 
   auto it = kmer_hash_table.find(target_hash);
   if (it == kmer_hash_table.end()) {
-    return; 
+    return;
   }
 
   for (int ref_pos : it->second) {
-    int max_possible_length = min(
-        (int)ref_seq_encoded.size() - ref_pos,
-        (int)target_seq_encoded.size() - tar_pos
-    );
-        
+    int max_possible_length = min((int)ref_seq_encoded.size() - ref_pos,
+                                  (int)target_seq_encoded.size() - tar_pos);
+
     int current_length = KMER_LENGTH;
-    while (current_length < max_possible_length && 
-           ref_seq_encoded[ref_pos + current_length] == target_seq_encoded[tar_pos + current_length]) {
+    while (current_length < max_possible_length &&
+           ref_seq_encoded[ref_pos + current_length] ==
+               target_seq_encoded[tar_pos + current_length]) {
       current_length++;
     }
 
@@ -369,20 +392,21 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
 }
 
 void compress_sequences() {
-  // 1. Use kmer_hash_table to find matches
-  // 2. Call handle_mismatch() for non-matching regions
-  // 3. Generate compressed output
   vector<Match> matches;
   vector<char> mismatches;
   matches.reserve(target_seq_encoded.size() / 100 + 1000);
   mismatches.reserve(10000);
-    
+
   int tar_pos = 0;
   int prev_ref_pos = 0;
   int prev_tar_pos = 0;
   int total_matched = 0;
   int total_mismatched = 0;
-    
+
+  string compressed_file = "output.txt";
+
+  write_metadata(compressed_file);
+
   while (tar_pos < target_seq_encoded.size()) {
     int match_ref_pos, match_length;
     find_longest_match(tar_pos, match_ref_pos, match_length);
@@ -405,39 +429,41 @@ void compress_sequences() {
       tar_pos++;
     }
   }
-    
+
   if (!mismatches.empty()) {
     handle_mismatch(prev_tar_pos, mismatches.size());
     total_mismatched += mismatches.size();
   }
 
-  string compressed_file = "output_compressed.txt";
-  ofstream out(compressed_file);
+  ofstream out(compressed_file, ios::app);
   if (!out) {
     throw runtime_error("Cannot open output file: " + compressed_file);
   }
-    
-  out << "MATCHES:" << matches.size() << "\n";
+
+  int offset = 0;
   for (const auto& match : matches) {
-    out << match.ref_pos << " " << match.tar_pos << " " << match.length << "\n";
+    int i = 0;
+    for (i = 0; i < match.tar_pos; i++) {
+      out << base_to_index.at(mismatch_buffer[offset]);
+      offset++;
+    }
+    if (match.tar_pos == 0) {
+      out << "0";
+      i = match.ref_pos;
+    }
+
+    out << "\n" << i << " " << match.length - KMER_LENGTH << "\n";
   }
-    
-  out << "\nMISMATCHES:" << mismatch_buffer.size() << "\n";
-  out << mismatch_buffer << "\n";
-    
+
   out.close();
 
-  string metadata_file = "output_metadata.txt";
-  write_metadata(metadata_file);
-    
   cout << "Total matched bases: " << total_matched << endl;
   cout << "Total mismatched bases: " << total_mismatched << endl;
-  cout << "Compression ratio: " 
-       << (100.0 * total_matched / (total_matched + total_mismatched)) << "%" << endl;
+  cout << "Compression ratio: "
+       << (100.0 * (total_matched) / (total_matched + total_mismatched)) << "%"
+       << endl;
   cout << "Compressed data written to " << compressed_file << endl;
-  cout << "Metadata written to " << metadata_file << endl;
 }
-
 
 void cleanup() {
   /**
@@ -463,12 +489,12 @@ int main(int argc, char* argv[]) {
 
   // Check if passed arguments are valid
   if (argc != 5) {
-    showHelpMessage("Invalid number of arguments.");
+    show_help_message("Invalid number of arguments.");
     return 1;
   }
 
   if (strcmp(argv[1], "-r") != 0 || strcmp(argv[3], "-t") != 0) {
-    showHelpMessage("Invalid arguments.");
+    show_help_message("Invalid arguments.");
     return 1;
   }
 
