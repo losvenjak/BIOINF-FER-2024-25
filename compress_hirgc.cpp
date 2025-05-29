@@ -260,7 +260,7 @@ void write_run_length_encoded(ostream& out, const vector<T>& values) {
    * group consecutive identical values into (value, count) pairs
    */
   if (values.empty()) {
-    out.write("\0", 1); // Empty marker
+    out << "0";
     return;
   }
 
@@ -271,77 +271,56 @@ void write_run_length_encoded(ostream& out, const vector<T>& values) {
     if (values[i] == current) {
       count++;
     } else {
-        out.write(reinterpret_cast<const char*>(&current), sizeof(current));
-        out.write(reinterpret_cast<const char*>(&count), sizeof(count));
-        current = values[i];
-        count = 1;
+      out << current << " " << count << " ";
+      current = values[i];
+      count = 1;
     }
   }
-  out.write(reinterpret_cast<const char*>(&current), sizeof(current));
-  out.write(reinterpret_cast<const char*>(&count), sizeof(count));
+  out << current << " " << count;
 }
 
 void write_metadata(const string& output_filename) {
   /**
    * Write all auxiliary metadata needed for decompression
    */
-  ofstream out(output_filename, ios::binary);
+  ofstream out(output_filename);
   if (!out) {
     throw runtime_error("Cannot open output file: " + output_filename);
   }
 
-  uint32_t header_length = header.size();
-  out.write(reinterpret_cast<const char*>(&header_length), sizeof(header_length));
-  out.write(header.c_str(), header_length);
-
-  write_run_length_encoded(out, line_breaks);
-
-  uint32_t num_lowercase = lowercase_ranges.size();
-  out.write(reinterpret_cast<const char*>(&num_lowercase), sizeof(num_lowercase));
+  out << "HEADER:" << header << "\n\n";
+  out << "LINE_BREAKS:";
+  
+  for (size_t i = 0; i < line_breaks.size(); ++i) {
+    if (i != 0) out << ",";
+    out << line_breaks[i];
+  }
+  
+  out << "\n\n";
+  out << "LOWERCASE_RANGES:" << lowercase_ranges.size() << "\n";
+  
   for (const auto& range : lowercase_ranges) {
-    out.write(reinterpret_cast<const char*>(&range.start), sizeof(range.start));
-    out.write(reinterpret_cast<const char*>(&range.length), sizeof(range.length));
+    out << range.start << " " << range.length << "\n";
   }
-
-  uint32_t num_n_ranges = n_ranges.size();
-  out.write(reinterpret_cast<const char*>(&num_n_ranges), sizeof(num_n_ranges));
+  
+  out << "\n";
+  out << "N_RANGES:" << n_ranges.size() << "\n";
+  
   for (const auto& range : n_ranges) {
-    out.write(reinterpret_cast<const char*>(&range.start), sizeof(range.start));
-    out.write(reinterpret_cast<const char*>(&range.length), sizeof(range.length));
+    out << range.start << " " << range.length << "\n";
   }
-
-  map<char, uint8_t> char_to_code;
+  
+  out << "\n";
+  map<char, int> char_to_code;
   vector<char> unique_chars;
+  out << "SPECIAL_CHARS:" << special_chars.size() << "\n";
+  
   for (const auto& sc : special_chars) {
     if (char_to_code.find(sc.ch) == char_to_code.end()) {
       char_to_code[sc.ch] = unique_chars.size();
       unique_chars.push_back(sc.ch);
     }
-  }
-
-  uint8_t num_unique_chars = unique_chars.size();
-  out.write(reinterpret_cast<const char*>(&num_unique_chars), sizeof(num_unique_chars));
-  out.write(unique_chars.data(), num_unique_chars);
-
-  // delta encoded positions and character codes
-  if (!special_chars.empty()) {
-    int prev_pos = 0;
-    bitset<MAX_DELTA_BITS> delta_bits;
-        
-    for (const auto& sc : special_chars) {
-      int delta = sc.pos - prev_pos;
-      prev_pos = sc.pos;
-            
-      do {
-        uint8_t byte = delta & 0x7F;
-        delta >>= 7;
-        if (delta != 0) byte |= 0x80;
-        out.write(reinterpret_cast<const char*>(&byte), sizeof(byte));
-      } while (delta != 0);
-            
-      uint8_t code = char_to_code[sc.ch];
-      out.write(reinterpret_cast<const char*>(&code), sizeof(code));
-    }
+    out << sc.pos << " " << sc.ch << "\n";
   }
 
   out.close();
@@ -390,7 +369,6 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
 }
 
 void compress_sequences() {
-  //
   // 1. Use kmer_hash_table to find matches
   // 2. Call handle_mismatch() for non-matching regions
   // 3. Generate compressed output
@@ -398,13 +376,13 @@ void compress_sequences() {
   vector<char> mismatches;
   matches.reserve(target_seq_encoded.size() / 100 + 1000);
   mismatches.reserve(10000);
-  
+    
   int tar_pos = 0;
   int prev_ref_pos = 0;
   int prev_tar_pos = 0;
   int total_matched = 0;
   int total_mismatched = 0;
-  
+    
   while (tar_pos < target_seq_encoded.size()) {
     int match_ref_pos, match_length;
     find_longest_match(tar_pos, match_ref_pos, match_length);
@@ -423,60 +401,43 @@ void compress_sequences() {
       prev_tar_pos = tar_pos + match_length;
       tar_pos += match_length;
     } else {
-        mismatches.push_back(target_seq[tar_pos]);
-        tar_pos++;
+      mismatches.push_back(target_seq[tar_pos]);
+      tar_pos++;
     }
   }
-  
+    
   if (!mismatches.empty()) {
     handle_mismatch(prev_tar_pos, mismatches.size());
     total_mismatched += mismatches.size();
   }
 
-  string compressed_file = "output.compressed";
-  ofstream out(compressed_file, ios::binary);
+  string compressed_file = "output_compressed.txt";
+  ofstream out(compressed_file);
   if (!out) {
     throw runtime_error("Cannot open output file: " + compressed_file);
   }
-  
-  vector<uint8_t> match_buffer;
-  match_buffer.reserve(matches.size() * 12);  
-  
-  uint32_t num_matches = matches.size();
-  const uint8_t* num_matches_bytes = reinterpret_cast<const uint8_t*>(&num_matches);
-  match_buffer.insert(match_buffer.end(), num_matches_bytes, num_matches_bytes + sizeof(num_matches));
-  
+    
+  out << "MATCHES:" << matches.size() << "\n";
   for (const auto& match : matches) {
-    auto encode_varint = [&match_buffer](int value) {
-      while (value > 0x7F) {
-        match_buffer.push_back((value & 0x7F) | 0x80);
-        value >>= 7;
-      }
-      match_buffer.push_back(value & 0x7F);
-    };
-
-    encode_varint(match.ref_pos);
-    encode_varint(match.tar_pos);
-    encode_varint(match.length);
+    out << match.ref_pos << " " << match.tar_pos << " " << match.length << "\n";
   }
-  
-  out.write(reinterpret_cast<const char*>(match_buffer.data()), match_buffer.size());
-
-  uint32_t mismatch_length = mismatch_buffer.size();
-  out.write(reinterpret_cast<const char*>(&mismatch_length), sizeof(mismatch_length));
-  out.write(mismatch_buffer.data(), mismatch_length);
-
+    
+  out << "\nMISMATCHES:" << mismatch_buffer.size() << "\n";
+  out << mismatch_buffer << "\n";
+    
   out.close();
 
-  string metadata_file = "output.meta";
+  string metadata_file = "output_metadata.txt";
   write_metadata(metadata_file);
+    
   cout << "Total matched bases: " << total_matched << endl;
   cout << "Total mismatched bases: " << total_mismatched << endl;
   cout << "Compression ratio: " 
-       << (100.0 * (total_matched) / (total_matched + total_mismatched)) << "%" << endl;
-  cout << "Metadata written to " << metadata_file << endl;
+       << (100.0 * total_matched / (total_matched + total_mismatched)) << "%" << endl;
   cout << "Compressed data written to " << compressed_file << endl;
+  cout << "Metadata written to " << metadata_file << endl;
 }
+
 
 void cleanup() {
   /**
