@@ -447,9 +447,10 @@ void compress_sequences() {
       out << base_to_index.at(mismatch_buffer[offset]);
       offset++;
     }
+
     if (match.tar_pos == 0) {
+      i = match.ref_pos - match.tar_pos;
       out << "0";
-      i = match.ref_pos;
     }
 
     out << "\n" << i << " " << match.length - KMER_LENGTH << "\n";

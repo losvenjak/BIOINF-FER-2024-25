@@ -16,6 +16,7 @@ struct InputFileNames {
 
 struct Mismatch {
   vector<int> values;
+  int length;
   int continue_for;
 };
 
@@ -203,6 +204,7 @@ void load_mismatch_data(const string& filename) {
 
   // Read mismatch data
   vector<int> values;
+  int length;
   int continue_for;
 
   while (getline(file, temp)) {
@@ -213,11 +215,15 @@ void load_mismatch_data(const string& filename) {
 
     getline(file, temp);
     int pos = 0;
-    int index = temp.find(' ') + 1;
-    for (int i = index; i < temp.size(); i++) {
+    for (int i = 0; i < temp.size(); i++) {
+      if (temp[i] == ' ') {
+        mismatch.length = pos;
+        pos = 0;
+        continue;
+      }
+
       pos = pos * 10 + (temp[i] - '0');
     }
-
     mismatch.continue_for = pos;
 
     mismatch_data.push_back(mismatch);
@@ -236,7 +242,7 @@ void decompress_target_sequence(vector<char>& target_seq) {
   }
 
   for (Mismatch& mismatch : mismatch_data) {
-    for (int i = 0; i < mismatch.values.size(); i++) {
+    for (int i = 0; i < mismatch.length; i++) {
       target_seq.push_back(decode_into_base[mismatch.values[i]]);
     }
     for (int i = 0; i < mismatch.continue_for + KMER_LENGTH; i++) {
@@ -275,8 +281,8 @@ void add_special_characters(vector<char>& target_seq) {
 
   // Insert special characters into the target sequence
   for (int i = 0; i < special_chars_order.size(); i++) {
-    target_seq.insert(target_seq.begin() + special_chars_positions[i],
-                      unique_special_chars_decoded[special_chars_order[i]]);
+    target_seq[special_chars_positions[i]] =
+        unique_special_chars_decoded[special_chars_order[i]];
   }
 }
 
@@ -298,7 +304,7 @@ void add_n_ranges(vector<char>& target_seq) {
     int length = n_ranges[i + 1];
 
     for (int j = 0; j < length; j++) {
-      target_seq.insert(target_seq.begin() + prev_pos + start, 'N');
+      target_seq[j + start + prev_pos] = 'N';
     }
     prev_pos = start;
   }
@@ -400,12 +406,6 @@ int main(int argc, char* argv[]) {
   load_metadata(input_file_names.compressed_target_file);
   load_mismatch_data(input_file_names.compressed_target_file);
 
-  cout << "Reference Sequence: " << endl;
-  for (char c : ref_seq) {
-    cout << c;
-  }
-  cout << endl;
-
   decompress_target_sequence(target_seq);
 
   add_special_characters(target_seq);
@@ -413,14 +413,6 @@ int main(int argc, char* argv[]) {
   add_lowercase_ranges(target_seq);
 
   write_reconstructed_sequence_to_file();
-
-  cout << "Target Sequence: " << endl;
-  for (char c : target_seq) {
-    cout << c;
-  }
-  cout << endl;
-
-  cout << "Decompressing..." << endl;
 
   cleanup();
 
