@@ -15,8 +15,8 @@ struct InputFileNames {
 };
 
 struct Mismatch {
-  vector<int> values;
-  int length;
+  vector<int> mismatched_bases;
+  int offset_from_prev;
   int continue_for;
 };
 
@@ -29,7 +29,8 @@ vector<int> n_ranges;
 vector<int> special_chars;
 vector<int> special_chars_order;
 vector<Mismatch> mismatch_data;
-int mismatch_offset = 0;
+int first_continue_for = 0;
+int ref_seq_position = 0;
 
 void show_help_message(string reason) {
   /**
@@ -84,7 +85,7 @@ void load_metadata(const string& filename) {
   /**
    * Load metadata from the compressed target file
    * Reads the header, line lengths, lowercase ranges,
-   * N ranges, special characters and mismatch offset
+   * N ranges, special characters and initial reference start postion
    */
 
   ifstream file(filename, ios::binary);
@@ -171,21 +172,28 @@ void load_metadata(const string& filename) {
     special_chars_order.push_back(c - '0');
   }
 
-  // Check mismatched offset
+  // Read initial start position in reference sequence and first continue for
   getline(file, temp);
-  if (temp[0] == '0') {
-    int pos = 0;
-    for (int i = 2; i < temp.size(); i++) {
-      pos = pos * 10 + (temp[i] - '0');
+  curr = 0;
+
+  for (size_t i = 0; i < temp.size(); ++i) {
+    char c = temp[i];
+
+    if (c == ' ') {
+      ref_seq_position = curr;
+      curr = 0;
+    } else {
+      curr = curr * 10 + (c - '0');
     }
-    mismatch_offset = pos;
   }
+  first_continue_for = curr;
 }
 
 void load_mismatch_data(const string& filename) {
   /**
    * Load mismatch data from the compressed target file
-   * Stores the mismatched values
+   * Store the mismatched bases, offsets from previous position,
+   * and the number of bases to continue from the reference sequence
    */
   ifstream file(filename, ios::binary);
   if (!file) {
@@ -194,11 +202,7 @@ void load_mismatch_data(const string& filename) {
 
   // Skip the header and metadata lines
   string temp;
-  for (int i = 0; i < 6; ++i) {
-    getline(file, temp);
-  }
-  // Skip the mismatch offset line if present
-  if (mismatch_offset != 0) {
+  for (int i = 0; i < 7; ++i) {
     getline(file, temp);
   }
 
@@ -210,50 +214,63 @@ void load_mismatch_data(const string& filename) {
   while (getline(file, temp)) {
     Mismatch mismatch;
     for (char c : temp) {
-      mismatch.values.push_back(c - '0');
+      mismatch.mismatched_bases.push_back(c - '0');
     }
 
     getline(file, temp);
     int pos = 0;
+    int mult = 1;
+
     for (int i = 0; i < temp.size(); i++) {
-      if (temp[i] == ' ') {
-        mismatch.length = pos;
-        pos = 0;
+      if (temp[i] == '-') {
+        mult = -1;
         continue;
       }
 
-      pos = pos * 10 + (temp[i] - '0');
+      if (temp[i] == ' ') {
+        mismatch.offset_from_prev = pos;
+        pos = 0;
+        continue;
+      }
+      pos = pos * 10 + mult * (temp[i] - '0');
     }
-    mismatch.continue_for = pos;
 
+    mismatch.continue_for = pos * mult;
     mismatch_data.push_back(mismatch);
   }
 }
 
 void decompress_target_sequence(vector<char>& target_seq) {
   /**
-   * Decompress the target sequence from the compressed file
+   * Decompress the target sequence using the compressed file info
    * Reconstructs the target sequence using the reference sequence
+   * and the mismatch data
    */
-  if (mismatch_offset != 0) {
-    for (int i = 0; i < mismatch_offset + KMER_LENGTH; i++) {
-      target_seq.push_back(ref_seq[i]);
-    }
+
+  // Write first sequence part until first mismatch
+  for (int i = 0; i < first_continue_for + KMER_LENGTH; ++i) {
+    target_seq.push_back(ref_seq[ref_seq_position]);
+    ref_seq_position++;
   }
 
   for (Mismatch& mismatch : mismatch_data) {
-    for (int i = 0; i < mismatch.length; i++) {
-      target_seq.push_back(decode_into_base[mismatch.values[i]]);
+    // Add the mismatched bases to the target sequence
+    for (int i = 0; i < mismatch.mismatched_bases.size(); i++) {
+      target_seq.push_back(decode_into_base[mismatch.mismatched_bases[i]]);
     }
+
+    // Continue writing from the reference sequence
+    ref_seq_position += mismatch.offset_from_prev;
     for (int i = 0; i < mismatch.continue_for + KMER_LENGTH; i++) {
-      target_seq.push_back(ref_seq[target_seq.size()]);
+      target_seq.push_back(ref_seq[ref_seq_position]);
+      ref_seq_position++;
     }
   }
 }
 
 void add_special_characters(vector<char>& target_seq) {
   /**
-   * Adds special characters to the target sequence
+   * Add special characters to the target sequence
    * based on the special character ranges
    */
   int special_char_num = special_chars[0];
@@ -281,14 +298,14 @@ void add_special_characters(vector<char>& target_seq) {
 
   // Insert special characters into the target sequence
   for (int i = 0; i < special_chars_order.size(); i++) {
-    target_seq[special_chars_positions[i]] =
-        unique_special_chars_decoded[special_chars_order[i]];
+    target_seq.insert(target_seq.begin() + special_chars_positions[i],
+                      unique_special_chars_decoded[special_chars_order[i]]);
   }
 }
 
 void add_n_ranges(vector<char>& target_seq) {
   /**
-   * Adds N ranges to the target sequence
+   * Add N ranges to the target sequence
    * based on the N ranges defined in the metadata
    */
   int n_ranges_num = n_ranges[0];
@@ -304,15 +321,15 @@ void add_n_ranges(vector<char>& target_seq) {
     int length = n_ranges[i + 1];
 
     for (int j = 0; j < length; j++) {
-      target_seq[j + start + prev_pos] = 'N';
+      target_seq.insert(target_seq.begin() + j + start + prev_pos, 'N');
     }
-    prev_pos = start;
+    prev_pos += start + length;
   }
 }
 
 void add_lowercase_ranges(vector<char>& target_seq) {
   /**
-   * Adds lowercase ranges to the target sequence
+   * Add lowercase ranges to the target sequence
    * based on the lowercase ranges defined in the metadata
    */
   int lower_case_ranges_num = lower_case_ranges[0];
@@ -332,7 +349,7 @@ void add_lowercase_ranges(vector<char>& target_seq) {
           tolower(target_seq[j + start + prev_pos]);
     }
 
-    prev_pos = start + length;
+    prev_pos += start + length;
   }
 }
 
@@ -350,7 +367,7 @@ void write_reconstructed_sequence_to_file() {
 
   out << endl;  // Write an empty line after the header
 
-  // Add new line characters based on the line lengths
+  // Write out the reconstructed sequence with line breaks
   int line_length_values_num = line_lenghts[0];
   int curr_seq_position = 0;
 
@@ -371,7 +388,7 @@ void write_reconstructed_sequence_to_file() {
 
 void cleanup() {
   /**
-   * Cleans up and releases all allocated memory
+   * Clean up and release all allocated memory
    */
   ref_seq.clear();
   target_seq.clear();
