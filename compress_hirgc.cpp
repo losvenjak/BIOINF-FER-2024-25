@@ -229,7 +229,7 @@ void process_target_sequence() {
 
     if (i == target_seq.size() - 1) {
       if (in_lowercase) {
-        lowercase_ranges.push_back({lowercase_start, i - lowercase_start});
+        lowercase_ranges.push_back({lowercase_start, i + 1 - lowercase_start});
         in_lowercase = false;
       }
       if (in_n_region) {
@@ -249,15 +249,19 @@ void encode_sequence(vector<char>& sequence, vector<int>& encoded_sequence) {
     char c = sequence[i];
     switch (c) {
       case 'A':
+      case 'a':
         encoded_sequence.push_back(0);
         break;
       case 'C':
+      case 'c':
         encoded_sequence.push_back(1);
         break;
       case 'G':
+      case 'g':
         encoded_sequence.push_back(2);
         break;
       case 'T':
+      case 't':
         encoded_sequence.push_back(3);
         break;
       default:
