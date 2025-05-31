@@ -17,8 +17,10 @@ using namespace std;
 
 /// Constants
 const int MAX_SEQ_LENGTH = 1 << 28;
-const int KMER_LENGTH = 20;
+const int KMER_LENGTH = 20; 
+//const int KMER_LENGTH = 4;  //DODANO ZA TEST, OBRISATI I  ODKOMENTIRATI GORNJI RED
 const int HASH_TABLE_SIZE = 1 << 20;
+//const int HASH_TABLE_SIZE = 1 << 6; //DODANO ZA TEST, OBRISATI I ODKOMENTIRATI GORNJI RED
 const int INITIAL_BUFFER_SIZE = 1024;
 const int BITS_PER_BYTE = 8;
 const int MAX_DELTA_BITS = 32;
@@ -154,10 +156,12 @@ void build_hash_table() {
   /**
    * Build hash table of k-mers from the reference sequence using rolling hash
    */
+   
 
   if (ref_seq.size() < KMER_LENGTH) {
     throw runtime_error("Reference sequence too short for k-mer size");
   }
+  
 
   // Compute first k-mer value
   uint64_t value = 0;
@@ -166,6 +170,7 @@ void build_hash_table() {
     value |= (ref_seq_encoded[k]);
   }
   kmer_hash_table[value].push_back(0);
+  
 
   // Compute a rolling integer for the rest of the sequence
   const uint64_t mask =
@@ -372,14 +377,18 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
     target_hash |= target_seq_encoded[tar_pos + k];
   }
 
-  auto it = kmer_hash_table.find(target_hash);
+  auto it = kmer_hash_table.find(target_hash);	
+	  
   if (it == kmer_hash_table.end()) {
     return;
   }
 
+
   for (int ref_pos : it->second) {
     int max_possible_length = min((int)ref_seq_encoded.size() - ref_pos,
                                   (int)target_seq_encoded.size() - tar_pos);
+                                  
+
 
     int current_length = KMER_LENGTH;
     while (current_length < max_possible_length &&
@@ -398,6 +407,7 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
 void compress_sequences() {
   vector<Match> matches;
   vector<char> mismatches;
+  vector<int> encoded_mismatches;
   matches.reserve(target_seq_encoded.size() / 100 + 1000);
   mismatches.reserve(10000);
 
@@ -408,6 +418,11 @@ void compress_sequences() {
   int total_mismatched = 0;
 
   string compressed_file = "output.txt";
+  
+  ofstream out(compressed_file, ios::app);
+  if (!out) {
+    throw runtime_error("Cannot open output file: " + compressed_file);
+  }
 
   write_metadata(compressed_file);
 
@@ -417,9 +432,16 @@ void compress_sequences() {
 
     if (match_length >= KMER_LENGTH) {
       if (!mismatches.empty()) {
-        handle_mismatch(prev_tar_pos, mismatches.size());
-        total_mismatched += mismatches.size();
+        encode_sequence(mismatches, encoded_mismatches);
+  	 for (size_t i = 0; i < encoded_mismatches.size(); ++i) {
+             out << encoded_mismatches[i];
+         }
+         out << '\n';
+
+        //handle_mismatch(prev_tar_pos, mismatches.size());
+        //total_mismatched += mismatches.size();
         mismatches.clear();
+        encoded_mismatches.clear();
       }
       int delta_ref = match_ref_pos - prev_ref_pos;
       int delta_tar = tar_pos - prev_tar_pos;
@@ -428,6 +450,7 @@ void compress_sequences() {
       prev_ref_pos = match_ref_pos + match_length;
       prev_tar_pos = tar_pos + match_length;
       tar_pos += match_length;
+      out << delta_ref << " " << match_length - KMER_LENGTH << '\n';
     } else {
       mismatches.push_back(target_seq[tar_pos]);
       tar_pos++;
@@ -435,14 +458,15 @@ void compress_sequences() {
   }
 
   if (!mismatches.empty()) {
-    handle_mismatch(prev_tar_pos, mismatches.size());
-    total_mismatched += mismatches.size();
+    encode_sequence(mismatches, encoded_mismatches);
+    for (size_t i = 0; i < encoded_mismatches.size(); ++i) {
+         out << encoded_mismatches[i];
+    }
+    //handle_mismatch(prev_tar_pos, mismatches.size());
+    //total_mismatched += mismatches.size();
   }
 
-  ofstream out(compressed_file, ios::app);
-  if (!out) {
-    throw runtime_error("Cannot open output file: " + compressed_file);
-  }
+  /*
 
   int offset = 0;
   for (const auto& match : matches) {
@@ -458,7 +482,7 @@ void compress_sequences() {
     }
 
     out << "\n" << i << " " << match.length - KMER_LENGTH << "\n";
-  }
+  } */
 
   out.close();
 
@@ -519,6 +543,7 @@ int main(int argc, char* argv[]) {
 
     encode_sequence(target_seq, target_seq_encoded);
     encode_sequence(ref_seq, ref_seq_encoded);
+
 
     build_hash_table();
     compress_sequences();
