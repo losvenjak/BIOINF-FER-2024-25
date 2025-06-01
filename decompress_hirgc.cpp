@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <unistd.h>
 
 using namespace std;
 
@@ -364,6 +365,17 @@ void cleanup() {
   target_seq.clear();
 }
 
+void print_memory_usage() {
+  std::ifstream status_file("/proc/self/status");
+  std::string line;
+  while (std::getline(status_file, line)) {
+    if (line.substr(0, 6) == "VmRSS:") {
+      std::cout << "Memory usage (Resident Set Size): " << line.substr(6) << std::endl;
+      break;
+    }
+  }
+}
+
 int main(int argc, char* argv[]) {
   /**
    * Main function for compressing files using HIRGC algorithm.
@@ -409,6 +421,7 @@ int main(int argc, char* argv[]) {
   cout << "Decompression completed successfully." << endl;
   cout << "Reconstructed sequence written to reconstructed_sequence.txt"
        << endl;
+  print_memory_usage();
 
   // Calculate and print the total time taken for decompression
   gettimeofday(&timer_end, nullptr);

@@ -12,6 +12,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <vector>
+#include <unistd.h>
 
 using namespace std;
 
@@ -499,6 +500,20 @@ void cleanup() {
   mismatch_buffer.clear();
 }
 
+void print_memory_usage() {
+  /**
+   * Print the current memory usage of the program
+   */
+  std::ifstream status_file("/proc/self/status");
+  std::string line;
+  while (std::getline(status_file, line)) {
+    if (line.substr(0, 6) == "VmRSS:") {
+      std::cout << "Memory usage: " << line.substr(6) << std::endl;
+      break;
+    }
+  }
+}
+
 int main(int argc, char* argv[]) {
   /**
    * Main function for compressing files using HIRGC algorithm.
@@ -543,6 +558,7 @@ int main(int argc, char* argv[]) {
     compress_to_7z("output.txt", "compressed.7z");
 
     cout << "Compression completed successfully." << endl;
+    print_memory_usage();
   } catch (const exception& e) {
     cerr << "Error: " << e.what() << endl;
     cleanup();
