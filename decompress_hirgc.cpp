@@ -1,3 +1,5 @@
+#include <sys/time.h>
+
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -23,6 +25,8 @@ vector<int> n_ranges;
 vector<int> special_chars;
 vector<int> special_chars_order;
 int ref_seq_position = 0;
+unsigned long timer;
+struct timeval timer_start, timer_end;
 
 void show_help_message(string reason) {
   /**
@@ -344,6 +348,14 @@ void write_reconstructed_sequence_to_file() {
   out.close();
 }
 
+void decompress_7z(const string& archive_name) {
+  string command = "7z x " + archive_name + " -y";
+  int result = system(command.c_str());
+  if (result != 0) {
+    throw runtime_error("7z decompression failed");
+  }
+}
+
 void cleanup() {
   /**
    * Clean up and release all allocated memory
@@ -368,6 +380,9 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // Start tracking time taken for decompression
+  gettimeofday(&timer_start, nullptr);
+
   // Assign the reference and target file paths from the command line arguments
   InputFileNames input_file_names;
 
@@ -377,6 +392,8 @@ int main(int argc, char* argv[]) {
   initialize_structures();
 
   load_and_clean_reference(input_file_names.reference_file, ref_seq);
+
+  decompress_7z("compressed.7z");
 
   load_metadata(input_file_names.compressed_target_file);
 
@@ -392,6 +409,13 @@ int main(int argc, char* argv[]) {
   cout << "Decompression completed successfully." << endl;
   cout << "Reconstructed sequence written to reconstructed_sequence.txt"
        << endl;
+
+  // Calculate and print the total time taken for decompression
+  gettimeofday(&timer_end, nullptr);
+
+  timer = 1000000 * (timer_end.tv_sec - timer_start.tv_sec) +
+          timer_end.tv_usec - timer_start.tv_usec;
+  printf("Total compresion time : %lf ms; \n", timer / 1000.0);
 
   cleanup();
 
