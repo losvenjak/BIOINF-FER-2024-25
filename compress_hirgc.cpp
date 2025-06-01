@@ -18,16 +18,10 @@ using namespace std;
 /// Constants
 const int MAX_SEQ_LENGTH = 1 << 28;
 const int KMER_LENGTH = 20;
-// const int KMER_LENGTH = 4;  //DODANO ZA TEST, OBRISATI I  ODKOMENTIRATI
-// GORNJI RED
 const int HASH_TABLE_SIZE = 1 << 20;
-// const int HASH_TABLE_SIZE = 1 << 6; //DODANO ZA TEST, OBRISATI I
-// ODKOMENTIRATI GORNJI RED
 const int INITIAL_BUFFER_SIZE = 1024;
 const int BITS_PER_BYTE = 8;
 const int MAX_DELTA_BITS = 32;
-const unordered_map<char, int> base_to_index = {
-    {'A', 0}, {'C', 1}, {'G', 2}, {'T', 3}};
 
 /// Struct for reference and target file names
 struct InputFileNames {
@@ -62,7 +56,8 @@ vector<char> ref_seq_cleaned;
 vector<char> target_seq_cleaned;
 vector<int> target_seq_encoded;
 vector<int> ref_seq_encoded;
-unordered_map<uint64_t, vector<int>> kmer_hash_table;
+vector<int> point(HASH_TABLE_SIZE, -1);
+vector<int> loc;
 vector<PositionRange> lowercase_ranges;
 vector<PositionRange> n_ranges;
 vector<SpecialChar> special_chars;
@@ -72,6 +67,7 @@ string mismatch_buffer;
 string header;
 unsigned long timer;
 struct timeval timer_start, timer_end;
+int base_to_index[256];
 
 void show_help_message(string reason) {
   /**
@@ -84,6 +80,18 @@ void show_help_message(string reason) {
        << endl;
 }
 
+void init_base_index() {
+  /**
+   * Initialize base to index mapping for encoding
+   * A=0, C=1, G=2, T=3
+   */
+  memset(base_to_index, -1, sizeof(base_to_index));
+  base_to_index['A'] = 0;
+  base_to_index['C'] = 1;
+  base_to_index['G'] = 2;
+  base_to_index['T'] = 3;
+}
+
 void initialize_structures() {
   /**
    * Initialize memory structures for genome sequences and buffers
@@ -93,10 +101,11 @@ void initialize_structures() {
   mismatch_buffer.reserve(INITIAL_BUFFER_SIZE);
   target_seq_encoded.reserve(MAX_SEQ_LENGTH);
   ref_seq_encoded.reserve(MAX_SEQ_LENGTH);
+  init_base_index();
 }
 
 void load_sequence(const string& filename, vector<char>& sequence,
-                   bool is_target) {
+                   vector<int>& sequence_encoded, bool is_target) {
   /**
    * Load genome sequence from FASTA file into memory
    * Store line breaks and header info for target sequence
@@ -134,6 +143,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
           }
         }
         sequence.push_back(c);
+        sequence_encoded.push_back(base_to_index[c]);
         length++;
       }
     }
@@ -158,28 +168,34 @@ void build_hash_table() {
   /**
    * Build hash table of k-mers from the reference sequence using rolling hash
    */
-
-  if (ref_seq.size() < KMER_LENGTH) {
+  if (ref_seq_encoded.size() < KMER_LENGTH) {
     throw runtime_error("Reference sequence too short for k-mer size");
   }
 
-  // Compute first k-mer value
+  loc.resize(ref_seq_encoded.size(), -1);
+
+  // Compute the hash of the first k-mer
   uint64_t value = 0;
-  for (int k = 0; k < KMER_LENGTH; k++) {
+  for (int k = 0; k < KMER_LENGTH; ++k) {
     value <<= 2;
-    value |= (ref_seq_encoded[k]);
+    value += ref_seq_encoded[k];
   }
-  kmer_hash_table[value].push_back(0);
 
-  // Compute a rolling integer for the rest of the sequence
-  const uint64_t mask =
-      (1ULL << (2 * KMER_LENGTH)) - 1;  // Mask for removing oldest two bits
+  int idx = value & (HASH_TABLE_SIZE - 1);
+  loc[0] = point[idx];
+  point[idx] = 0;
 
-  for (int k = KMER_LENGTH; k < ref_seq_encoded.size(); k++) {
+  const uint64_t mask = (1ULL << (2 * KMER_LENGTH)) - 1;
+
+  // Use rolling hash to compute for next k-mers
+  for (int i = 1; i <= ref_seq_encoded.size() - KMER_LENGTH; ++i) {
     value <<= 2;
-    value |= (ref_seq_encoded[k]);
+    value += ref_seq_encoded[i + KMER_LENGTH - 1];
     value &= mask;
-    kmer_hash_table[value].push_back(k - KMER_LENGTH + 1);
+
+    idx = value & (HASH_TABLE_SIZE - 1);
+    loc[i] = point[idx];
+    point[idx] = i;
   }
 }
 
@@ -366,32 +382,30 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
     return;
   }
 
-  uint64_t target_hash = 0;
-  for (int k = 0; k < KMER_LENGTH; k++) {
-    target_hash <<= 2;
-    target_hash |= target_seq_encoded[tar_pos + k];
+  uint64_t hash = 0;
+  for (int i = 0; i < KMER_LENGTH; ++i) {
+    hash <<= 2;
+    hash += target_seq_encoded[tar_pos + i];
   }
 
-  auto it = kmer_hash_table.find(target_hash);
+  // Compute the hash value for the current k-mer in the target sequence
+  int idx = hash & (HASH_TABLE_SIZE - 1);
 
-  if (it == kmer_hash_table.end()) {
-    return;
-  }
-
-  for (int ref_pos : it->second) {
-    int max_possible_length = min((int)ref_seq_encoded.size() - ref_pos,
-                                  (int)target_seq_encoded.size() - tar_pos);
-
+  // Find the longest match
+  for (int k = point[idx]; k != -1; k = loc[k]) {
+    int max_possible = min((int)ref_seq_encoded.size() - k,
+                           (int)target_seq_encoded.size() - tar_pos);
     int current_length = KMER_LENGTH;
-    while (current_length < max_possible_length &&
-           ref_seq_encoded[ref_pos + current_length] ==
+
+    while (current_length < max_possible &&
+           ref_seq_encoded[k + current_length] ==
                target_seq_encoded[tar_pos + current_length]) {
       current_length++;
     }
 
     if (current_length > match_length) {
       match_length = current_length;
-      match_ref_pos = ref_pos;
+      match_ref_pos = k;
     }
   }
 }
@@ -430,8 +444,6 @@ void compress_sequences() {
         }
         out << '\n';
 
-        // handle_mismatch(prev_tar_pos, mismatches.size());
-        // total_mismatched += mismatches.size();
         mismatches.clear();
         encoded_mismatches.clear();
       }
@@ -454,27 +466,7 @@ void compress_sequences() {
     for (size_t i = 0; i < encoded_mismatches.size(); ++i) {
       out << encoded_mismatches[i];
     }
-    // handle_mismatch(prev_tar_pos, mismatches.size());
-    // total_mismatched += mismatches.size();
   }
-
-  /*
-
-  int offset = 0;
-  for (const auto& match : matches) {
-    int i = 0;
-    for (i = 0; i < match.tar_pos; i++) {
-      out << base_to_index.at(mismatch_buffer[offset]);
-      offset++;
-    }
-
-    if (match.tar_pos == 0) {
-      i = match.ref_pos - match.tar_pos;
-      out << "0";
-    }
-
-    out << "\n" << i << " " << match.length - KMER_LENGTH << "\n";
-  } */
 
   out.close();
 
@@ -500,7 +492,6 @@ void cleanup() {
    */
   ref_seq.clear();
   target_seq.clear();
-  kmer_hash_table.clear();
   lowercase_ranges.clear();
   n_ranges.clear();
   special_chars.clear();
@@ -536,13 +527,15 @@ int main(int argc, char* argv[]) {
   initialize_structures();
 
   try {
-    load_sequence(input_file_names.reference_file, ref_seq, false);
-    load_sequence(input_file_names.target_file, target_seq, true);
+    load_sequence(input_file_names.reference_file, ref_seq, ref_seq_encoded,
+                  false);
+    load_sequence(input_file_names.target_file, target_seq, target_seq_encoded,
+                  true);
 
     process_target_sequence();
 
-    encode_sequence(target_seq, target_seq_encoded);
-    encode_sequence(ref_seq, ref_seq_encoded);
+    // encode_sequence(target_seq, target_seq_encoded);
+    // encode_sequence(ref_seq, ref_seq_encoded);
 
     build_hash_table();
     compress_sequences();
