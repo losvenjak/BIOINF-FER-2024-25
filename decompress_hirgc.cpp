@@ -14,12 +14,6 @@ struct InputFileNames {
   string compressed_target_file;
 };
 
-struct Mismatch {
-  string mismatched_bases;
-  int offset_from_prev;
-  int continue_for;
-};
-
 vector<char> ref_seq;
 vector<char> target_seq;
 string header;
@@ -28,8 +22,6 @@ vector<int> lower_case_ranges;
 vector<int> n_ranges;
 vector<int> special_chars;
 vector<int> special_chars_order;
-vector<Mismatch> mismatch_data;
-int first_continue_for = 0;
 int ref_seq_position = 0;
 
 void show_help_message(string reason) {
@@ -173,12 +165,14 @@ void load_metadata(const string& filename) {
   }
 }
 
-void load_mismatch_data(const string& filename) {
+void decompress_target_sequence(const string& filename,
+                                vector<char>& target_seq) {
   /**
-   * Load mismatch data from the compressed target file
-   * Store the mismatched bases, offsets from previous position,
-   * and the number of bases to continue from the reference sequence
+   * Decompress the target sequence using the compressed file info
+   * Reconstructs the target sequence using the reference sequence
+   * and the mismatch data
    */
+
   ifstream file(filename, ios::binary);
   if (!file) {
     throw runtime_error("Cannot open file: " + filename);
@@ -190,65 +184,44 @@ void load_mismatch_data(const string& filename) {
     getline(file, temp);
   }
 
-  // Read mismatch data
-  vector<int> values;
-  int length;
-  int continue_for;
-
   while (getline(file, temp)) {
-    Mismatch mismatch;
-    mismatch.mismatched_bases = temp;
+    // If there's no space in the line it's a mismatch
+    // the values are copied from compressed file
+    if (temp.find(' ') == string::npos) {
+      for (int i = 0; i < temp.size(); i++) {
+        char c = temp[i];
+        target_seq.push_back(decode_into_base[c - '0']);
+      }
+    } else {  // If there's a space it's a match, read from reference
 
-    getline(file, temp);
-    int pos = 0;
-    int mult = 1;
+      // Read the position and length of the match
+      int position = 0;
+      int counter = 0;
+      int curr = 0;
+      int mult = 1;
 
-    for (int i = 0; i < temp.size(); i++) {
-      if (temp[i] == '-') {
-        mult = -1;
-        continue;
+      for (int i = 0; i < temp.size(); i++) {
+        if (temp[i] == '-') {
+          mult = -1;
+          continue;
+        }
+
+        if (temp[i] == ' ') {
+          position = curr;
+          curr = 0;
+          continue;
+        }
+        curr = curr * 10 + mult * (temp[i] - '0');
       }
 
-      if (temp[i] == ' ') {
-        mismatch.offset_from_prev = pos;
-        pos = 0;
-        continue;
+      counter = curr * mult;
+
+      // Write matched bases from the reference sequence
+      ref_seq_position += position;
+      for (int i = 0; i < counter + KMER_LENGTH; i++) {
+        target_seq.push_back(ref_seq[ref_seq_position]);
+        ref_seq_position++;
       }
-      pos = pos * 10 + mult * (temp[i] - '0');
-    }
-
-    mismatch.continue_for = pos * mult;
-    mismatch_data.push_back(mismatch);
-  }
-}
-
-void decompress_target_sequence(vector<char>& target_seq) {
-  /**
-   * Decompress the target sequence using the compressed file info
-   * Reconstructs the target sequence using the reference sequence
-   * and the mismatch data
-   */
-
-  // Write first sequence part until first mismatch
-  if (first_continue_for != 0) {
-    for (int i = 0; i < first_continue_for + KMER_LENGTH; ++i) {
-      target_seq.push_back(ref_seq[ref_seq_position]);
-      ref_seq_position++;
-    }
-  }
-
-  for (Mismatch& mismatch : mismatch_data) {
-    // Add the mismatched bases to the target sequence
-    for (int i = 0; i < mismatch.mismatched_bases.size(); i++) {
-      char c = mismatch.mismatched_bases[i];
-      target_seq.push_back(decode_into_base[c - '0']);
-    }
-
-    // Continue writing from the reference sequence
-    ref_seq_position += mismatch.offset_from_prev;
-    for (int i = 0; i < mismatch.continue_for + KMER_LENGTH; i++) {
-      target_seq.push_back(ref_seq[ref_seq_position]);
-      ref_seq_position++;
     }
   }
 }
@@ -406,15 +379,19 @@ int main(int argc, char* argv[]) {
   load_and_clean_reference(input_file_names.reference_file, ref_seq);
 
   load_metadata(input_file_names.compressed_target_file);
-  load_mismatch_data(input_file_names.compressed_target_file);
 
-  decompress_target_sequence(target_seq);
+  decompress_target_sequence(input_file_names.compressed_target_file,
+                             target_seq);
 
   add_special_characters(target_seq);
   add_n_ranges(target_seq);
   add_lowercase_ranges(target_seq);
 
   write_reconstructed_sequence_to_file();
+
+  cout << "Decompression completed successfully." << endl;
+  cout << "Reconstructed sequence written to reconstructed_sequence.txt"
+       << endl;
 
   cleanup();
 
