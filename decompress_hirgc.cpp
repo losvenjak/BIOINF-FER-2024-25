@@ -339,10 +339,8 @@ void write_reconstructed_sequence_to_file() {
     int repeat_cnt = line_lenghts[i + 1];
 
     for (int j = 0; j < repeat_cnt; j++) {
-      for (int k = 0; k < lenght; k++) {
-        out << target_seq[curr_seq_position + k];
-      }
-      out << endl;
+      out.write(&target_seq[curr_seq_position], lenght);
+      out.put('\n');
       curr_seq_position += lenght;
     }
   }
@@ -428,7 +426,7 @@ int main(int argc, char* argv[]) {
 
   timer = 1000000 * (timer_end.tv_sec - timer_start.tv_sec) +
           timer_end.tv_usec - timer_start.tv_usec;
-  printf("Total compresion time : %lf ms; \n", timer / 1000.0);
+  printf("Total decompresion time : %lf ms; \n", timer / 1000.0);
 
   cleanup();
 
