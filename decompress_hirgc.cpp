@@ -15,7 +15,7 @@ struct InputFileNames {
 };
 
 struct Mismatch {
-  vector<int> mismatched_bases;
+  string mismatched_bases;
   int offset_from_prev;
   int continue_for;
 };
@@ -171,22 +171,6 @@ void load_metadata(const string& filename) {
     char c = temp[i];
     special_chars_order.push_back(c - '0');
   }
-
-  // Read initial start position in reference sequence and first continue for
-  getline(file, temp);
-  curr = 0;
-
-  for (size_t i = 0; i < temp.size(); ++i) {
-    char c = temp[i];
-
-    if (c == ' ') {
-      ref_seq_position = curr;
-      curr = 0;
-    } else {
-      curr = curr * 10 + (c - '0');
-    }
-  }
-  first_continue_for = curr;
 }
 
 void load_mismatch_data(const string& filename) {
@@ -202,7 +186,7 @@ void load_mismatch_data(const string& filename) {
 
   // Skip the header and metadata lines
   string temp;
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < 6; ++i) {
     getline(file, temp);
   }
 
@@ -213,9 +197,7 @@ void load_mismatch_data(const string& filename) {
 
   while (getline(file, temp)) {
     Mismatch mismatch;
-    for (char c : temp) {
-      mismatch.mismatched_bases.push_back(c - '0');
-    }
+    mismatch.mismatched_bases = temp;
 
     getline(file, temp);
     int pos = 0;
@@ -248,15 +230,18 @@ void decompress_target_sequence(vector<char>& target_seq) {
    */
 
   // Write first sequence part until first mismatch
-  for (int i = 0; i < first_continue_for + KMER_LENGTH; ++i) {
-    target_seq.push_back(ref_seq[ref_seq_position]);
-    ref_seq_position++;
+  if (first_continue_for != 0) {
+    for (int i = 0; i < first_continue_for + KMER_LENGTH; ++i) {
+      target_seq.push_back(ref_seq[ref_seq_position]);
+      ref_seq_position++;
+    }
   }
 
   for (Mismatch& mismatch : mismatch_data) {
     // Add the mismatched bases to the target sequence
     for (int i = 0; i < mismatch.mismatched_bases.size(); i++) {
-      target_seq.push_back(decode_into_base[mismatch.mismatched_bases[i]]);
+      char c = mismatch.mismatched_bases[i];
+      target_seq.push_back(decode_into_base[c - '0']);
     }
 
     // Continue writing from the reference sequence
@@ -371,7 +356,7 @@ void write_reconstructed_sequence_to_file() {
   int line_length_values_num = line_lenghts[0];
   int curr_seq_position = 0;
 
-  for (int i = 1; i < line_length_values_num + 1; i += 2) {
+  for (int i = 1; i < line_length_values_num; i += 2) {
     int lenght = line_lenghts[i];
     int repeat_cnt = line_lenghts[i + 1];
 
