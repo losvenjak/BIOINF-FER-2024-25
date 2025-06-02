@@ -23,6 +23,11 @@ https://www.fer.unizg.hr/predmet/bio1
 - Compression – Stores only the differences while maintaining the ability to reconstruct the original sequence.
 - Decompression – Reconstructs the original genome by applying stored variations to the reference genome.
 
+## Installation and Running Instructions
+
+# Install dependencies
+    make init
+        
 # Compile
     make compress_hirgc
     make decompress_hirgc
@@ -32,3 +37,12 @@ https://www.fer.unizg.hr/predmet/bio1
 
 # Decompress
     ./decompress_hirgc -r <reference_file_name> -t <target_file_name>
+
+# Run example
+    follow previous steps for installing dependencies and compiling
+    
+    compress using command
+    ./compress_hirgc -r ref.fna -t tar.fna
+
+    decompress using command
+    ./compress_hirgc -r ref.fna -t output.txt
