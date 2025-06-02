@@ -1,8 +1,15 @@
 CC = g++
-CFLAG = -O3 -Wall -std=c++0x
+CFLAG = -O3 -w -Wall -std=c++0x
 
-compress_hirgc: compress_hirgc
-	$(CC) compress_hirgc.cpp -o compress_hirgc $(CFLAG)
+init:
+	@echo "Updating and installing dependencies..."
+	@apt-get update
+	@apt-get install -y p7zip-full
+
+compress_hirgc: compress_hirgc.cpp
+	@$(CC) compress_hirgc.cpp -o compress_hirgc $(CFLAG)
+	@echo "Compiled successfully"
 
 decompress_hirgc: decompress_hirgc.cpp
-	$(CC) decompress_hirgc.cpp -o decompress_hirgc $(CFLAG)
+	@$(CC) decompress_hirgc.cpp -o decompress_hirgc $(CFLAG)
+	@echo "Compiled successfully"
