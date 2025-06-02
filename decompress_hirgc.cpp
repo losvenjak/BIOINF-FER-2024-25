@@ -34,6 +34,7 @@ void show_help_message(string reason) {
   /**
    * Display an error message along with usage instructions
    * Used when the user provides invalid arguments
+   * @author Polina Rykova
    */
   cout << "Error: " << reason << endl;
   cout << "Usage: ./decompress_hirgc -r <reference_file_name> -t "
@@ -54,6 +55,7 @@ void load_and_clean_reference(const string& filename, vector<char>& ref_seq) {
    * Load and clean reference genome sequence
    * remove any non-ACGT characters, convert to uppercase
    * mirroring process in compression
+   * @author Polina Rykova
    */
 
   ifstream file(filename);
@@ -85,6 +87,7 @@ void load_metadata(const string& filename) {
    * Load metadata from the compressed target file
    * Read the header, line lengths, lowercase ranges,
    * N ranges and special characters
+   * @author Polina Rykova
    */
 
   ifstream file(filename, ios::binary);
@@ -178,6 +181,7 @@ void decompress_target_sequence(const string& filename,
    * Decompress the target sequence using the compressed file info
    * Reconstruct the target sequence using the reference sequence and the
    * mismatch data
+   * @author Polina Rykova
    */
 
   ifstream file(filename, ios::binary);
@@ -237,6 +241,7 @@ void add_special_characters(vector<char>& target_seq) {
   /**
    * Add special characters to the target sequence
    * based on the special character ranges
+   * @author Polina Rykova
    */
   int special_char_num = special_chars[0];
   int unique_special_chars_num = special_chars[special_char_num + 1];
@@ -272,6 +277,7 @@ void add_n_ranges(vector<char>& target_seq) {
   /**
    * Add N ranges to the target sequence
    * based on the N ranges defined in the metadata
+   * @author Polina Rykova
    */
   int n_ranges_num = n_ranges[0];
 
@@ -296,6 +302,7 @@ void add_lowercase_ranges(vector<char>& target_seq) {
   /**
    * Add lowercase ranges to the target sequence
    * based on the lowercase ranges defined in the metadata
+   * @author Polina Rykova
    */
   int lower_case_ranges_num = lower_case_ranges[0];
 
@@ -321,6 +328,7 @@ void add_lowercase_ranges(vector<char>& target_seq) {
 void write_reconstructed_sequence_to_file() {
   /**
    * Writes the reconstructed target sequence to a file
+   * @author Polina Rykova
    */
   string output_filename = "reconstructed_sequence.fna";
   ofstream out(output_filename);
@@ -352,6 +360,7 @@ void write_reconstructed_sequence_to_file() {
 void decompress_7z(const string& archive_name) {
   /**
    * Decompress 7z archive to get data
+   * @author Polina Rykova
    */
   string command = "7z x " + archive_name + " -y";
   int result = system(command.c_str());
@@ -369,6 +378,10 @@ void cleanup() {
 }
 
 void print_memory_usage() {
+  /**
+   * Show memory used for the program
+   * @author Lorena Švenjak
+   */
   ifstream status_file("/proc/self/status");
   string line;
   while (getline(status_file, line)) {
@@ -381,6 +394,7 @@ void print_memory_usage() {
 int main(int argc, char* argv[]) {
   /**
    * Main function for compressing files using HIRGC algorithm.
+   * @author Polina Rykova
    */
 
   // Check if passed arguments are valid
@@ -397,7 +411,6 @@ int main(int argc, char* argv[]) {
   // Start tracking time taken for decompression
   gettimeofday(&timer_start, nullptr);
 
-  // Assign the reference and target file paths from the command line arguments
   InputFileNames input_file_names;
 
   input_file_names.reference_file = argv[2];

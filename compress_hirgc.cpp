@@ -74,6 +74,7 @@ void show_help_message(string reason) {
   /**
    * Display an error message along with usage instructions
    * Used when the user provides invalid arguments
+   * @author Polina Rykova
    */
   cout << "Error: " << reason << endl;
   cout << "Usage: ./compress_hirgc -r <reference_file_name> -t "
@@ -85,6 +86,7 @@ void init_base_index() {
   /**
    * Initialize base to index mapping for time efficient encoding
    * A=0, C=1, G=2, T=3
+   * @author Polina Rykova
    */
   memset(base_to_index, -1, sizeof(base_to_index));
   base_to_index['A'] = 0;
@@ -96,6 +98,7 @@ void init_base_index() {
 void initialize_structures() {
   /**
    * Initialize memory structures for genome sequences and buffers
+   * @author Lorena Švenjak
    */
   ref_seq.reserve(MAX_SEQ_LENGTH);
   target_seq.reserve(MAX_SEQ_LENGTH);
@@ -110,6 +113,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
   /**
    * Load genome sequence from FASTA file into memory
    * Store line breaks and header info for target sequence
+   * @author Lorena Švenjak, Polina Rykova
    */
   ifstream file(filename);
   if (!file) {
@@ -172,6 +176,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
 void build_hash_table() {
   /**
    * Build hash table of k-mers from the reference sequence using rolling hash
+   * @author Lorena Švenjak, Polina Rykova
    */
   if (ref_seq_encoded.size() < KMER_LENGTH) {
     throw runtime_error("Reference sequence too short for k-mer size");
@@ -210,6 +215,7 @@ void process_target_sequence() {
    * - lowercase regions
    * - n regions (unknown bases)
    * - other special characters
+   * @author Lorena Švenjak, Polina Rykova
    */
   bool in_lowercase = false;
   bool in_n_region = false;
@@ -279,6 +285,7 @@ void encode_sequence(vector<char>& sequence, vector<int>& encoded_sequence) {
   /**
    * Encode cleaned sequence into a numerical format for compression
    * A=0, C=1, G=2, T=3
+   * @author Lorena Švenjak
    */
   for (int i = 0; i < sequence.size(); ++i) {
     char c = toupper(sequence[i]);
@@ -304,6 +311,7 @@ void encode_sequence(vector<char>& sequence, vector<int>& encoded_sequence) {
 void write_metadata(const string& output_filename) {
   /**
    * Write all auxiliary metadata needed for decompression as plain text
+   * @author Lorena Švenjak
    */
   ofstream out(output_filename);
   if (!out) {
@@ -378,6 +386,7 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
   /**
    * Finds the longest match between target and reference starting at tar_pos
    * Uses the k-mer hash table to find candidate positions
+   * @author Lorena Švenjak
    */
   match_ref_pos = -1;
   match_length = 0;
@@ -427,6 +436,10 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
 }
 
 void compress_sequences() {
+  /**
+   * Write matches and mismatches based on reference and target sequence
+   * @author Lorena Švenjak
+   */
   vector<Match> matches;
   vector<char> mismatches;
   vector<int> encoded_mismatches;
@@ -448,7 +461,6 @@ void compress_sequences() {
 
   write_metadata(compressed_file);
 
-  // while (tar_pos < target_seq_encoded.size()) {
   while (tar_pos < target_seq_encoded.size()) {
     int match_ref_pos, match_length;
     find_longest_match(tar_pos, match_ref_pos, match_length);
@@ -498,6 +510,7 @@ void compress_sequences() {
 void compress_to_7z(const string& input_file, const string& archive_name) {
   /**
    * Compress input file into a 7z archive
+   * @author Polina Rykova
    */
   string command = "7z a -t7z " + archive_name + " " + input_file;
   int result = system(command.c_str());
@@ -509,6 +522,7 @@ void compress_to_7z(const string& input_file, const string& archive_name) {
 void cleanup() {
   /**
    * Clean up and releases all allocated memory
+   * @author Lorena Švenjak
    */
   ref_seq.clear();
   target_seq.clear();
@@ -522,6 +536,7 @@ void cleanup() {
 void print_memory_usage() {
   /**
    * Print the current memory usage of the program
+   * @author Lorena Švenjak
    */
   std::ifstream status_file("/proc/self/status");
   std::string line;
@@ -536,6 +551,7 @@ void print_memory_usage() {
 int main(int argc, char* argv[]) {
   /**
    * Main function for compressing files using HIRGC algorithm.
+   * @author Lorena Švenjak
    */
 
   // Start tracking time taken for compression
