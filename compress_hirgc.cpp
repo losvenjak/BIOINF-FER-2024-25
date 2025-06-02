@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <bitset>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -16,7 +17,6 @@
 
 using namespace std;
 
-/// Constants
 const int MAX_SEQ_LENGTH = 1 << 28;
 const int KMER_LENGTH = 20;
 const int HASH_TABLE_SIZE = 1 << 28;
@@ -25,7 +25,6 @@ const int INITIAL_BUFFER_SIZE = 1024;
 const int BITS_PER_BYTE = 8;
 const int MAX_DELTA_BITS = 32;
 
-/// Struct for reference and target file names
 struct InputFileNames {
   string reference_file;
   string target_file;
@@ -73,8 +72,8 @@ int base_to_index[256];
 
 void show_help_message(string reason) {
   /**
-   * Displays an error message along with usage instructions.
-   * Used when the user provides invalid arguments.
+   * Display an error message along with usage instructions
+   * Used when the user provides invalid arguments
    */
   cout << "Error: " << reason << endl;
   cout << "Usage: ./compress_hirgc -r <reference_file_name> -t "
@@ -84,7 +83,7 @@ void show_help_message(string reason) {
 
 void init_base_index() {
   /**
-   * Initialize base to index mapping for encoding
+   * Initialize base to index mapping for time efficient encoding
    * A=0, C=1, G=2, T=3
    */
   memset(base_to_index, -1, sizeof(base_to_index));
@@ -118,6 +117,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
   }
 
   string line;
+
   // Read header line
   getline(file, line);
   header = line;
@@ -132,6 +132,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
       continue;
     }
 
+    // Store chars into sequences
     for (char c : line) {
       if (c != '\n') {
         if (!is_target) {
@@ -151,7 +152,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
         length++;
       }
     }
-
+    // Store line lenght
     if (is_target) {
       if (!line_lengths.empty() &&
           line_lengths[line_lengths.size() - 1].length == length) {
@@ -206,7 +207,7 @@ void build_hash_table() {
 void process_target_sequence() {
   /**
    * Processes the target genome sequence to identify special features :
-   * - lowercase regions (often indicate repeats)
+   * - lowercase regions
    * - n regions (unknown bases)
    * - other special characters
    */
@@ -242,6 +243,7 @@ void process_target_sequence() {
       in_n_region = false;
     }
 
+    // Chack if the char is a base or special
     switch (toupper(c)) {
       case 'A':
       case 'C':
@@ -254,10 +256,12 @@ void process_target_sequence() {
         valid = false;
     }
 
+    // Store bases into cleaned sequence
     if (valid) {
       target_seq_cleaned.push_back(toupper(c));
     }
 
+    // Close any open ranges
     if (i == target_seq.size() - 1) {
       if (in_lowercase) {
         lowercase_ranges.push_back({lowercase_start, i + 1 - lowercase_start});
@@ -295,17 +299,6 @@ void encode_sequence(vector<char>& sequence, vector<int>& encoded_sequence) {
         continue;
     }
   }
-}
-
-void handle_mismatch(int pos, int length) {
-  /**
-   * Handle mismatched regions between reference and target genomes
-   */
-  if (pos + length > target_seq.size()) {
-    throw out_of_range("Mismatch position out of bounds");
-  }
-  mismatch_buffer.append(target_seq.begin() + pos,
-                         target_seq.begin() + pos + length);
 }
 
 void write_metadata(const string& output_filename) {
@@ -383,8 +376,8 @@ void write_metadata(const string& output_filename) {
 
 void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
   /**
-   * Finds the longest match between target and reference sequences starting at
-   * tar_pos Uses the k-mer hash table to find candidate positions
+   * Finds the longest match between target and reference starting at tar_pos
+   * Uses the k-mer hash table to find candidate positions
    */
   match_ref_pos = -1;
   match_length = 0;
@@ -403,8 +396,7 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
   int idx = hash & (HASH_TABLE_SIZE - 1);
 
   // Find the longest match
-  int ht_half_size =
-      HASH_TABLE_BIT >> 1;  // hash smo napravili od 20 najnizih bitova k-mera
+  int ht_half_size = HASH_TABLE_BIT >> 1;  // hash from 20 lowest bits of k-mer
   int missing_bases_count = KMER_LENGTH - ht_half_size;
   for (int k = point[idx]; k != -1; k = loc[k]) {
     int current_length = 0;
@@ -414,7 +406,7 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
                target_seq_encoded[tar_pos + current_length])
       current_length++;
 
-    if (current_length == missing_bases_count) {  // našli smo match
+    if (current_length == missing_bases_count) {  // match found
       current_length = KMER_LENGTH;
       int max_possible = min((int)ref_seq_encoded.size() - k,
                              (int)target_seq_encoded.size() - tar_pos);
@@ -504,6 +496,9 @@ void compress_sequences() {
 }
 
 void compress_to_7z(const string& input_file, const string& archive_name) {
+  /**
+   * Compress input file into a 7z archive
+   */
   string command = "7z a -t7z " + archive_name + " " + input_file;
   int result = system(command.c_str());
   if (result != 0) {
@@ -513,7 +508,7 @@ void compress_to_7z(const string& input_file, const string& archive_name) {
 
 void cleanup() {
   /**
-   * Cleans up and releases all allocated memory
+   * Clean up and releases all allocated memory
    */
   ref_seq.clear();
   target_seq.clear();
@@ -557,7 +552,6 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  // Assign the reference and target file paths from the command line arguments
   InputFileNames input_file_names;
 
   input_file_names.reference_file = argv[2];
@@ -572,14 +566,11 @@ int main(int argc, char* argv[]) {
                   true);
 
     process_target_sequence();
-
-    // encode_sequence(target_seq, target_seq_encoded);
-    // encode_sequence(ref_seq, ref_seq_encoded);
-
     build_hash_table();
     compress_sequences();
 
     compress_to_7z("output.txt", "compressed.7z");
+    remove("output.txt");
 
     cout << "Compression completed successfully." << endl;
     print_memory_usage();

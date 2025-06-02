@@ -1,6 +1,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -31,18 +32,18 @@ struct timeval timer_start, timer_end;
 
 void show_help_message(string reason) {
   /**
-   * Displays an error message along with usage instructions.
-   * Used when the user provides invalid arguments.
+   * Display an error message along with usage instructions
+   * Used when the user provides invalid arguments
    */
   cout << "Error: " << reason << endl;
   cout << "Usage: ./decompress_hirgc -r <reference_file_name> -t "
-          "<target_file_name>"
+          "<target_file_compressed>"
        << endl;
 }
 
 void initialize_structures() {
   /**
-   * Initializes all the data structures used in the decompression process.
+   * Initializes all the data structures used in the decompression process
    */
   ref_seq.reserve(MAX_SEQ_LENGTH);
   target_seq.reserve(MAX_SEQ_LENGTH);
@@ -51,7 +52,8 @@ void initialize_structures() {
 void load_and_clean_reference(const string& filename, vector<char>& ref_seq) {
   /**
    * Load and clean reference genome sequence
-   * removes any non-ACGT characters, converts to uppercase
+   * remove any non-ACGT characters, convert to uppercase
+   * mirroring process in compression
    */
 
   ifstream file(filename);
@@ -81,8 +83,8 @@ void load_and_clean_reference(const string& filename, vector<char>& ref_seq) {
 void load_metadata(const string& filename) {
   /**
    * Load metadata from the compressed target file
-   * Reads the header, line lengths, lowercase ranges,
-   * N ranges, special characters and initial reference start postion
+   * Read the header, line lengths, lowercase ranges,
+   * N ranges and special characters
    */
 
   ifstream file(filename, ios::binary);
@@ -174,8 +176,8 @@ void decompress_target_sequence(const string& filename,
                                 vector<char>& target_seq) {
   /**
    * Decompress the target sequence using the compressed file info
-   * Reconstructs the target sequence using the reference sequence
-   * and the mismatch data
+   * Reconstruct the target sequence using the reference sequence and the
+   * mismatch data
    */
 
   ifstream file(filename, ios::binary);
@@ -348,6 +350,9 @@ void write_reconstructed_sequence_to_file() {
 }
 
 void decompress_7z(const string& archive_name) {
+  /**
+   * Decompress 7z archive to get data
+   */
   string command = "7z x " + archive_name + " -y";
   int result = system(command.c_str());
   if (result != 0) {
@@ -364,12 +369,11 @@ void cleanup() {
 }
 
 void print_memory_usage() {
-  std::ifstream status_file("/proc/self/status");
-  std::string line;
-  while (std::getline(status_file, line)) {
+  ifstream status_file("/proc/self/status");
+  string line;
+  while (getline(status_file, line)) {
     if (line.substr(0, 6) == "VmRSS:") {
-      std::cout << "Memory usage (Resident Set Size): " << line.substr(6)
-                << std::endl;
+      cout << "Memory usage (Resident Set Size): " << line.substr(6) << endl;
       break;
     }
   }
@@ -415,6 +419,7 @@ int main(int argc, char* argv[]) {
   add_lowercase_ranges(target_seq);
 
   write_reconstructed_sequence_to_file();
+  remove("output.txt");
 
   cout << "Decompression completed successfully." << endl;
   cout << "Reconstructed sequence written to reconstructed_sequence.txt"
