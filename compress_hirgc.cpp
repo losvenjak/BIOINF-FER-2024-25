@@ -19,7 +19,8 @@ using namespace std;
 /// Constants
 const int MAX_SEQ_LENGTH = 1 << 28;
 const int KMER_LENGTH = 20;
-const int HASH_TABLE_SIZE = 1 << 20;
+const int HASH_TABLE_SIZE = 1 << 28;
+const int HASH_TABLE_BIT = 28;
 const int INITIAL_BUFFER_SIZE = 1024;
 const int BITS_PER_BYTE = 8;
 const int MAX_DELTA_BITS = 32;
@@ -191,8 +192,8 @@ void build_hash_table() {
   // Use rolling hash to compute for next k-mers
   for (int i = 1; i <= ref_seq_encoded.size() - KMER_LENGTH; ++i) {
     value <<= 2;
-    value += ref_seq_encoded[i + KMER_LENGTH - 1];
-    value &= mask;
+    value += (ref_seq_encoded[i + KMER_LENGTH - 1]);
+    //value &= mask;
 
     idx = value & (HASH_TABLE_SIZE - 1);
     loc[i] = point[idx];
@@ -391,17 +392,28 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
 
   // Compute the hash value for the current k-mer in the target sequence
   int idx = hash & (HASH_TABLE_SIZE - 1);
-
+  
   // Find the longest match
+  int ht_half_size = HASH_TABLE_BIT >> 1; // hash smo napravili od 20 najnizih bitova k-mera
+  int missing_bases_count = KMER_LENGTH - ht_half_size;
   for (int k = point[idx]; k != -1; k = loc[k]) {
-    int max_possible = min((int)ref_seq_encoded.size() - k,
-                           (int)target_seq_encoded.size() - tar_pos);
-    int current_length = KMER_LENGTH;
-
-    while (current_length < max_possible &&
+    int current_length = 0;
+    
+    while (current_length < missing_bases_count &&
+           ref_seq_encoded[current_length + k] == target_seq_encoded[tar_pos + current_length])
+      current_length++;
+    
+    if (current_length == missing_bases_count) {	//našli smo match
+      current_length = KMER_LENGTH;
+      int max_possible = min((int)ref_seq_encoded.size() - k,
+                             (int)target_seq_encoded.size() - tar_pos);
+      while (current_length < max_possible &&
            ref_seq_encoded[k + current_length] ==
                target_seq_encoded[tar_pos + current_length]) {
-      current_length++;
+        current_length++;
+      }
+    } else {
+      current_length = 0;
     }
 
     if (current_length > match_length) {
@@ -433,7 +445,8 @@ void compress_sequences() {
 
   write_metadata(compressed_file);
 
-  while (tar_pos < target_seq_encoded.size()) {
+  //while (tar_pos < target_seq_encoded.size()) {
+ while (tar_pos < target_seq_encoded.size()) {
     int match_ref_pos, match_length;
     find_longest_match(tar_pos, match_ref_pos, match_length);
 
@@ -546,6 +559,7 @@ int main(int argc, char* argv[]) {
                   false);
     load_sequence(input_file_names.target_file, target_seq, target_seq_encoded,
                   true);
+
 
     process_target_sequence();
 
