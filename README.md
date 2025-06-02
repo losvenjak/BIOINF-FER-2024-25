@@ -49,4 +49,4 @@ https://www.fer.unizg.hr/predmet/bio1
     ./compress_hirgc -r ref.fna -t tar.fna
 
     decompress using command
-    ./compress_hirgc -r ref.fna -t output.txt
+    ./decompress_hirgc -r ref.fna -t output.txt
