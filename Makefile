@@ -3,8 +3,8 @@ CFLAG = -O3 -w -Wall -std=c++0x
 
 init:
 	@echo "Updating and installing dependencies..."
-	@apt-get update
-	@apt-get install -y p7zip-full
+	@sudo apt-get update
+	@sudo apt-get install -y p7zip-full
 
 compress_hirgc: compress_hirgc.cpp
 	@$(CC) compress_hirgc.cpp -o compress_hirgc $(CFLAG)
