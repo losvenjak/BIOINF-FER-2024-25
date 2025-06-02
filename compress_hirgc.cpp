@@ -193,7 +193,7 @@ void build_hash_table() {
   for (int i = 1; i <= ref_seq_encoded.size() - KMER_LENGTH; ++i) {
     value <<= 2;
     value += (ref_seq_encoded[i + KMER_LENGTH - 1]);
-    //value &= mask;
+    value &= mask;
 
     idx = value & (HASH_TABLE_SIZE - 1);
     loc[i] = point[idx];
