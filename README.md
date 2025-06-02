@@ -27,6 +27,10 @@ https://www.fer.unizg.hr/predmet/bio1
 
 # Install dependencies
     make init
+
+    if run on local linux machine replace lines 6 and 7 in Makefile with:
+        @sudo apt-get update
+        @sudo apt-get install -y p7zip-full
         
 # Compile
     make compress_hirgc
