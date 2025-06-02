@@ -322,7 +322,7 @@ void write_reconstructed_sequence_to_file() {
   /**
    * Writes the reconstructed target sequence to a file
    */
-  string output_filename = "reconstructed_sequence.txt";
+  string output_filename = "reconstructed_sequence.fna";
   ofstream out(output_filename);
   if (!out) {
     throw runtime_error("Cannot open output file: " + output_filename);
@@ -422,7 +422,7 @@ int main(int argc, char* argv[]) {
   remove("output.txt");
 
   cout << "Decompression completed successfully." << endl;
-  cout << "Reconstructed sequence written to reconstructed_sequence.txt"
+  cout << "Reconstructed sequence written to reconstructed_sequence.fna"
        << endl;
 
   // Calculate and print the total time and memory taken for decompression
