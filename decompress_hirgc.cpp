@@ -410,8 +410,8 @@ int main(int argc, char* argv[]) {
   decompress_target_sequence(input_file_names.compressed_target_file,
                              target_seq);
 
-  add_special_characters(target_seq);
   add_n_ranges(target_seq);
+  add_special_characters(target_seq);
   add_lowercase_ranges(target_seq);
 
   write_reconstructed_sequence_to_file();

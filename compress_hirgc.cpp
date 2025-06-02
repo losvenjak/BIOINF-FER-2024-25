@@ -118,16 +118,12 @@ void load_sequence(const string& filename, vector<char>& sequence,
   }
 
   string line;
+  // Read header line
+  getline(file, line);
+  header = line;
 
   while (getline(file, line)) {
     int length = 0;
-
-    if (line[0] == '>') {  // Skip header line for reference, store for target
-      if (is_target) {
-        header = line;
-      }
-      continue;
-    };
 
     if (line.empty()) {  // Skip empty lines for reference, store for target
       if (is_target) {
@@ -151,7 +147,7 @@ void load_sequence(const string& filename, vector<char>& sequence,
           }
         }
         sequence.push_back(c);
-        sequence_encoded.push_back(base_to_index[c]);
+        sequence_encoded.push_back(base_to_index[toupper(c)]);
         length++;
       }
     }
@@ -229,7 +225,7 @@ void process_target_sequence() {
         lowercase_start = i;
         in_lowercase = true;
       }
-      c = toupper(c);
+      valid = true;
     } else if (in_lowercase) {
       lowercase_ranges.push_back({lowercase_start, i - lowercase_start});
       in_lowercase = false;
@@ -240,7 +236,7 @@ void process_target_sequence() {
         n_start = i;
         in_n_region = true;
       }
-      valid = false;
+      valid = true;
     } else if (in_n_region) {
       n_ranges.push_back({n_start, i - n_start});
       in_n_region = false;
@@ -251,6 +247,7 @@ void process_target_sequence() {
       case 'C':
       case 'G':
       case 'T':
+        valid = true;
         break;
       default:
         special_chars.push_back({i, c});
@@ -258,7 +255,7 @@ void process_target_sequence() {
     }
 
     if (valid) {
-      target_seq_cleaned.push_back(c);
+      target_seq_cleaned.push_back(toupper(c));
     }
 
     if (i == target_seq.size() - 1) {
@@ -280,7 +277,7 @@ void encode_sequence(vector<char>& sequence, vector<int>& encoded_sequence) {
    * A=0, C=1, G=2, T=3
    */
   for (int i = 0; i < sequence.size(); ++i) {
-    char c = sequence[i];
+    char c = toupper(sequence[i]);
     switch (c) {
       case 'A':
         encoded_sequence.push_back(0);
