@@ -468,6 +468,7 @@ void compress_sequences() {
     if (match_length >= KMER_LENGTH) {
       if (!mismatches.empty()) {
         encode_sequence(mismatches, encoded_mismatches);
+        total_mismatched += encoded_mismatches.size();
         for (size_t i = 0; i < encoded_mismatches.size(); ++i) {
           out << encoded_mismatches[i];
         }
@@ -492,6 +493,7 @@ void compress_sequences() {
 
   if (!mismatches.empty()) {
     encode_sequence(mismatches, encoded_mismatches);
+    total_mismatched += encoded_mismatches.size();
     for (size_t i = 0; i < encoded_mismatches.size(); ++i) {
       out << encoded_mismatches[i];
     }
