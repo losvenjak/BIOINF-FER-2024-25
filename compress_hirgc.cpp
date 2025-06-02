@@ -1,4 +1,5 @@
 #include <sys/time.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <bitset>
@@ -12,7 +13,6 @@
 #include <tuple>
 #include <unordered_map>
 #include <vector>
-#include <unistd.h>
 
 using namespace std;
 
@@ -140,8 +140,14 @@ void load_sequence(const string& filename, vector<char>& sequence,
       if (c != '\n') {
         if (!is_target) {
           c = toupper(c);
-          if (string("ACGT").find(c) == string::npos) {
-            continue;
+          switch (c) {
+            case 'A':
+            case 'C':
+            case 'G':
+            case 'T':
+              break;
+            default:
+              continue;
           }
         }
         sequence.push_back(c);
@@ -240,9 +246,15 @@ void process_target_sequence() {
       in_n_region = false;
     }
 
-    if (string("ACGTN").find(toupper(c)) == string::npos) {
-      special_chars.push_back({i, c});
-      valid = false;
+    switch (toupper(c)) {
+      case 'A':
+      case 'C':
+      case 'G':
+      case 'T':
+        break;
+      default:
+        special_chars.push_back({i, c});
+        valid = false;
     }
 
     if (valid) {
@@ -392,24 +404,26 @@ void find_longest_match(int tar_pos, int& match_ref_pos, int& match_length) {
 
   // Compute the hash value for the current k-mer in the target sequence
   int idx = hash & (HASH_TABLE_SIZE - 1);
-  
+
   // Find the longest match
-  int ht_half_size = HASH_TABLE_BIT >> 1; // hash smo napravili od 20 najnizih bitova k-mera
+  int ht_half_size =
+      HASH_TABLE_BIT >> 1;  // hash smo napravili od 20 najnizih bitova k-mera
   int missing_bases_count = KMER_LENGTH - ht_half_size;
   for (int k = point[idx]; k != -1; k = loc[k]) {
     int current_length = 0;
-    
+
     while (current_length < missing_bases_count &&
-           ref_seq_encoded[current_length + k] == target_seq_encoded[tar_pos + current_length])
+           ref_seq_encoded[current_length + k] ==
+               target_seq_encoded[tar_pos + current_length])
       current_length++;
-    
-    if (current_length == missing_bases_count) {	//našli smo match
+
+    if (current_length == missing_bases_count) {  // našli smo match
       current_length = KMER_LENGTH;
       int max_possible = min((int)ref_seq_encoded.size() - k,
                              (int)target_seq_encoded.size() - tar_pos);
       while (current_length < max_possible &&
-           ref_seq_encoded[k + current_length] ==
-               target_seq_encoded[tar_pos + current_length]) {
+             ref_seq_encoded[k + current_length] ==
+                 target_seq_encoded[tar_pos + current_length]) {
         current_length++;
       }
     } else {
@@ -445,8 +459,8 @@ void compress_sequences() {
 
   write_metadata(compressed_file);
 
-  //while (tar_pos < target_seq_encoded.size()) {
- while (tar_pos < target_seq_encoded.size()) {
+  // while (tar_pos < target_seq_encoded.size()) {
+  while (tar_pos < target_seq_encoded.size()) {
     int match_ref_pos, match_length;
     find_longest_match(tar_pos, match_ref_pos, match_length);
 
@@ -559,7 +573,6 @@ int main(int argc, char* argv[]) {
                   false);
     load_sequence(input_file_names.target_file, target_seq, target_seq_encoded,
                   true);
-
 
     process_target_sequence();
 
